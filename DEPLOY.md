@@ -49,8 +49,8 @@ ALTER DATABASE calendar_manager OWNER TO calendar_user;
 
 ```bash
 # Tạo thư mục cho app
-mkdir -p ~/apps
-cd ~/apps
+mkdir -p ~/app
+cd ~/app
 
 # Clone code (hoặc upload qua scp/rsync)
 # Nếu dùng git:
@@ -58,7 +58,7 @@ git clone <your-repo-url> calendar-manager
 cd calendar-manager
 
 # Nếu upload thủ công từ máy local:
-# scp -r /path/to/CalendarManager user@vps-ip:~/apps/calendar-manager
+# scp -r /path/to/CalendarManager user@vps-ip:~/app/calendar-manager
 
 # Cài dependencies
 npm install
@@ -77,7 +77,7 @@ NODE_ENV=production
 
 ```bash
 # Chạy schema SQL để tạo tables và seed data
-sudo -u postgres psql -d calendar_manager -f ~/apps/calendar-manager/src/db/schema.sql
+sudo -u postgres psql -d calendar_manager -f ~/app/calendar-manager/src/db/schema.sql
 
 # Lấy token đã được auto-generate
 sudo -u postgres psql -d calendar_manager -c "SELECT token, role FROM agent_tokens;"
@@ -239,7 +239,7 @@ pm2 list
 ## Update code
 
 ```bash
-cd ~/apps/calendar-manager
+cd ~/app/calendar-manager
 
 # Pull code mới (nếu dùng git)
 git pull
