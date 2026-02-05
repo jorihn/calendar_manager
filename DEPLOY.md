@@ -16,13 +16,13 @@ ssh user@your-vps-ip
 # Update system
 sudo apt update && sudo apt upgrade -y
 
-# Cài Node.js 18.x
-curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
+# Cài Node.js 22.x
+curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
 sudo apt install -y nodejs
 
 # Kiểm tra version
-node --version  # v18.x.x
-npm --version   # 9.x.x
+node --version  # v22.x.x
+npm --version   # 10.x.x
 
 # Cài PostgreSQL
 sudo apt install -y postgresql postgresql-contrib
@@ -31,7 +31,7 @@ sudo apt install -y postgresql postgresql-contrib
 sudo systemctl status postgresql
 ```
 
-## Bước 2: Setup Database
+## Bước 2: Tạo Database và User
 
 ```bash
 # Đăng nhập PostgreSQL
@@ -43,18 +43,7 @@ CREATE USER calendar_user WITH PASSWORD 'your_secure_password_here';
 GRANT ALL PRIVILEGES ON DATABASE calendar_manager TO calendar_user;
 ALTER DATABASE calendar_manager OWNER TO calendar_user;
 \q
-
-# Chạy schema SQL trực tiếp
-sudo -u postgres psql -d calendar_manager -f ~/apps/calendar-manager/src/db/schema.sql
 ```
-
-**Lưu ý:** Token sẽ được tự động generate random khi chạy schema. Để lấy token:
-
-```bash
-sudo -u postgres psql -d calendar_manager -c "SELECT token, role FROM agent_tokens;"
-```
-
-Lưu token này để dùng cho API authentication.
 
 ## Bước 3: Deploy code
 
@@ -85,6 +74,16 @@ PORT=3000
 DATABASE_URL=postgresql://calendar_user:your_secure_password_here@localhost:5432/calendar_manager
 NODE_ENV=production
 ```
+
+```bash
+# Chạy schema SQL để tạo tables và seed data
+sudo -u postgres psql -d calendar_manager -f ~/apps/calendar-manager/src/db/schema.sql
+
+# Lấy token đã được auto-generate
+sudo -u postgres psql -d calendar_manager -c "SELECT token, role FROM agent_tokens;"
+```
+
+**Lưu ý:** Copy và lưu token này, bạn sẽ cần nó để authenticate API requests.
 
 ```bash
 # Build TypeScript
