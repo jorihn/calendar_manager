@@ -77,7 +77,7 @@ NODE_ENV=production
 
 ```bash
 # Chạy schema SQL để tạo tables và seed data
-sudo -u postgres psql -d calendar_manager -f ~/app/calendar-manager/src/db/schema.sql
+cat src/db/schema.sql | sudo -u postgres psql -d calendar_manager
 
 # Lấy token đã được auto-generate
 sudo -u postgres psql -d calendar_manager -c "SELECT token, role FROM agent_tokens;"
@@ -143,6 +143,15 @@ curl -X POST http://YOUR_VPS_IP:3000/calendar/slots \
     "type": "meeting"
   }'
 ```
+<!-- curl -X POST http://180.93.237.207:3000/calendar/slots \
+  -H "Authorization: Bearer rcwaBYMV2M2CbNDneRc5W0tI2ZwH9de9Y4AowXitRJI=" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "Test Meeting",
+    "start_time": "2024-01-15T09:00:00Z",
+    "end_time": "2024-01-15T10:00:00Z",
+    "type": "meeting"
+  }' -->
 
 ## Trả lời câu hỏi: Gọi API qua IP có được không?
 

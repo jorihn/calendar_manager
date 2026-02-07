@@ -240,7 +240,19 @@ router.get('/slots', async (req: AuthenticatedRequest, res: Response): Promise<v
     const userId = req.userId;
 
     const result = await pool.query(
-      `SELECT * FROM calendar_slots 
+      `SELECT 
+        id,
+        user_id,
+        title,
+        start_time,
+        end_time,
+        type,
+        status,
+        created_at,
+        updated_at,
+        to_char(start_time AT TIME ZONE 'Asia/Ho_Chi_Minh', 'YYYY-MM-DD HH24:MI:SS') as start_time_local,
+        to_char(end_time AT TIME ZONE 'Asia/Ho_Chi_Minh', 'YYYY-MM-DD HH24:MI:SS') as end_time_local
+       FROM calendar_slots 
        WHERE user_id = $1 AND status = 'active'
        ORDER BY start_time ASC`,
       [userId]

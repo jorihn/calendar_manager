@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Calendar Manager - API Tester</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            font-size: 1.1rem;
+            opacity: 0.9;
+        }
+
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            margin-bottom: 20px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+        }
+
+        .card h2 {
+            color: #667eea;
+            margin-bottom: 20px;
+            font-size: 1.5rem;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #333;
+            font-weight: 500;
+        }
+
+        input, select, textarea {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 1rem;
+            transition: border-color 0.3s;
+        }
+
+        input:focus, select:focus, textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 12px 30px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        .token-display {
+            background: #f5f5f5;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 15px;
+            word-break: break-all;
+            font-family: 'Courier New', monospace;
+            display: none;
+        }
+
+        .token-display.show {
+            display: block;
+        }
+
+        .token-display strong {
+            color: #667eea;
+        }
+
+        .response {
+            background: #f5f5f5;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 15px;
+            max-height: 300px;
+            overflow-y: auto;
+            display: none;
+        }
+
+        .response.show {
+            display: block;
+        }
+
+        .response pre {
+            margin: 0;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        .success {
+            background: #d4edda;
+            border-left: 4px solid #28a745;
+        }
+
+        .error {
+            background: #f8d7da;
+            border-left: 4px solid #dc3545;
+        }
+
+        .info-box {
+            background: #e7f3ff;
+            border-left: 4px solid #2196F3;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        .info-box p {
+            margin: 5px 0;
+            color: #333;
+        }
+
+        .copy-btn {
+            background: #28a745;
+            padding: 8px 16px;
+            font-size: 0.9rem;
+            margin-left: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📅 Calendar Manager</h1>
+            <p>API Testing Interface</p>
+        </div>
+
+        <div class="card">
+            <h2>🔐 Step 1: Register User</h2>
+            <div class="info-box">
+                <p><strong>Server IP:</strong> <span id="serverIp">Loading...</span></p>
+            </div>
+            <form id="registerForm">
+                <div class="form-group">
+                    <label for="userName">Your Name</label>
+                    <input type="text" id="userName" placeholder="Enter your name" required>
+                </div>
+                <div class="form-group">
+                    <label for="timezone">Timezone</label>
+                    <select id="timezone">
+                        <option value="Asia/Ho_Chi_Minh">Asia/Ho_Chi_Minh (GMT+7)</option>
+                        <option value="UTC">UTC</option>
+                        <option value="America/New_York">America/New_York</option>
+                        <option value="Europe/London">Europe/London</option>
+                        <option value="Asia/Tokyo">Asia/Tokyo</option>
+                    </select>
+                </div>
+                <button type="submit">Register & Get Token</button>
+            </form>
+            <div id="tokenDisplay" class="token-display">
+                <strong>Your Token:</strong><br>
+                <span id="tokenValue"></span>
+                <button class="copy-btn" onclick="copyToken()">Copy Token</button>
+                <br><br>
+                <strong>User ID:</strong> <span id="userId"></span>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>📝 Step 2: Create Calendar Slot</h2>
+            <form id="slotForm">
+                <div class="form-group">
+                    <label for="slotToken">Token (from Step 1)</label>
+                    <input type="text" id="slotToken" placeholder="Paste your token here" required>
+                </div>
+                <div class="form-group">
+                    <label for="slotTitle">Title</label>
+                    <input type="text" id="slotTitle" placeholder="Meeting title" required>
+                </div>
+                <div class="form-group">
+                    <label for="slotStart">Start Time</label>
+                    <input type="datetime-local" id="slotStart" required>
+                </div>
+                <div class="form-group">
+                    <label for="slotEnd">End Time</label>
+                    <input type="datetime-local" id="slotEnd" required>
+                </div>
+                <div class="form-group">
+                    <label for="slotType">Type</label>
+                    <select id="slotType">
+                        <option value="meeting">Meeting</option>
+                        <option value="work">Work</option>
+                        <option value="focus">Focus</option>
+                        <option value="personal">Personal</option>
+                    </select>
+                </div>
+                <button type="submit">Create Slot</button>
+            </form>
+            <div id="slotResponse" class="response"></div>
+        </div>
+
+        <div class="card">
+            <h2>📋 Step 3: View Your Slots</h2>
+            <form id="viewForm">
+                <div class="form-group">
+                    <label for="viewToken">Token</label>
+                    <input type="text" id="viewToken" placeholder="Paste your token here" required>
+                </div>
+                <button type="submit">Get All Slots</button>
+            </form>
+            <div id="viewResponse" class="response"></div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = window.location.origin;
+
+        // Display server IP
+        fetch('/api/server-info')
+            .then(r => r.json())
+            .then(data => {
+                document.getElementById('serverIp').textContent = data.ip || window.location.hostname;
+            })
+            .catch(() => {
+                document.getElementById('serverIp').textContent = window.location.hostname;
+            });
+
+        // Register form
+        document.getElementById('registerForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const name = document.getElementById('userName').value;
+            const timezone = document.getElementById('timezone').value;
+
+            try {
+                const response = await fetch(`${API_BASE}/auth/register`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name, timezone })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    document.getElementById('tokenValue').textContent = data.token;
+                    document.getElementById('userId').textContent = data.user.id;
+                    document.getElementById('tokenDisplay').classList.add('show');
+                    
+                    // Auto-fill token in other forms
+                    document.getElementById('slotToken').value = data.token;
+                    document.getElementById('viewToken').value = data.token;
+                } else {
+                    alert('Error: ' + data.message);
+                }
+            } catch (error) {
+                alert('Network error: ' + error.message);
+            }
+        });
+
+        // Create slot form
+        document.getElementById('slotForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const token = document.getElementById('slotToken').value;
+            const title = document.getElementById('slotTitle').value;
+            const start_time = new Date(document.getElementById('slotStart').value).toISOString();
+            const end_time = new Date(document.getElementById('slotEnd').value).toISOString();
+            const type = document.getElementById('slotType').value;
+
+            try {
+                const response = await fetch(`${API_BASE}/calendar/slots`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({ title, start_time, end_time, type })
+                });
+
+                const data = await response.json();
+                const responseDiv = document.getElementById('slotResponse');
+                
+                responseDiv.innerHTML = `<pre>${JSON.stringify(data, null, 2)}</pre>`;
+                responseDiv.classList.add('show');
+                responseDiv.classList.toggle('success', response.ok);
+                responseDiv.classList.toggle('error', !response.ok);
+            } catch (error) {
+                const responseDiv = document.getElementById('slotResponse');
+                responseDiv.innerHTML = `<pre>Error: ${error.message}</pre>`;
+                responseDiv.classList.add('show', 'error');
+            }
+        });
+
+        // View slots form
+        document.getElementById('viewForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const token = document.getElementById('viewToken').value;
+
+            try {
+                const response = await fetch(`${API_BASE}/calendar/slots`, {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+
+                const data = await response.json();
+                const responseDiv = document.getElementById('viewResponse');
+                
+                responseDiv.innerHTML = `<pre>${JSON.stringify(data, null, 2)}</pre>`;
+                responseDiv.classList.add('show');
+                responseDiv.classList.toggle('success', response.ok);
+                responseDiv.classList.toggle('error', !response.ok);
+            } catch (error) {
+                const responseDiv = document.getElementById('viewResponse');
+                responseDiv.innerHTML = `<pre>Error: ${error.message}</pre>`;
+                responseDiv.classList.add('show', 'error');
+            }
+        });
+
+        function copyToken() {
+            const token = document.getElementById('tokenValue').textContent;
+            navigator.clipboard.writeText(token).then(() => {
+                alert('Token copied to clipboard!');
+            });
+        }
+
+        // Set default datetime to now + 1 hour
+        const now = new Date();
+        const oneHourLater = new Date(now.getTime() + 60 * 60 * 1000);
+        const twoHoursLater = new Date(now.getTime() + 2 * 60 * 60 * 1000);
+        
+        document.getElementById('slotStart').value = oneHourLater.toISOString().slice(0, 16);
+        document.getElementById('slotEnd').value = twoHoursLater.toISOString().slice(0, 16);
+    </script>
+</body>
+</html>
