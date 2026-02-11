@@ -4,6 +4,9 @@ import path from 'path';
 import os from 'os';
 import calendarRoutes from './routes/calendar';
 import authRoutes from './routes/auth';
+import objectivesRoutes from './routes/objectives';
+import keyResultsRoutes from './routes/keyResults';
+import tasksRoutes from './routes/tasks';
 import { authenticateToken } from './middleware/auth';
 import { errorHandler } from './middleware/errorHandler';
 
@@ -40,6 +43,9 @@ app.get('/api/server-info', (req, res) => {
 
 app.use('/auth', authRoutes);
 app.use('/calendar', authenticateToken, calendarRoutes);
+app.use('/objectives', authenticateToken, objectivesRoutes);
+app.use('/key-results', authenticateToken, keyResultsRoutes);
+app.use('/tasks', authenticateToken, tasksRoutes);
 
 app.use(errorHandler);
 
