@@ -1,6 +1,7 @@
 import express from 'express';
 import dotenv from 'dotenv';
 import path from 'path';
+import fs from 'fs';
 import os from 'os';
 import calendarRoutes from './routes/calendar';
 import authRoutes from './routes/auth';
@@ -39,6 +40,16 @@ app.get('/api/server-info', (req, res) => {
   }
   
   res.json({ ip, port: PORT });
+});
+
+app.get('/api/docs', (req, res) => {
+  const docPath = path.join(__dirname, '../API_DOCUMENTATION.md');
+  try {
+    const content = fs.readFileSync(docPath, 'utf-8');
+    res.type('text/markdown').send(content);
+  } catch (error) {
+    res.status(404).json({ code: 'DOC_NOT_FOUND', message: 'API documentation not found' });
+  }
 });
 
 app.use('/auth', authRoutes);
