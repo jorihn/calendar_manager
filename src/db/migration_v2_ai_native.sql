@@ -137,3 +137,17 @@ CREATE TABLE IF NOT EXISTS ai_snapshots (
 CREATE INDEX IF NOT EXISTS idx_ai_snapshots_user_id ON ai_snapshots(user_id);
 CREATE INDEX IF NOT EXISTS idx_ai_snapshots_cycle_id ON ai_snapshots(cycle_id);
 CREATE INDEX IF NOT EXISTS idx_ai_snapshots_created_at ON ai_snapshots(created_at DESC);
+
+-- ============================================================
+-- 8. Assignee support (multi-user task assignment)
+-- ============================================================
+
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS assignee_id UUID REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE initiatives ADD COLUMN IF NOT EXISTS assignee_id UUID REFERENCES users(id) ON DELETE SET NULL;
+
+-- Default assignee to creator for existing records
+UPDATE tasks SET assignee_id = user_id WHERE assignee_id IS NULL;
+UPDATE initiatives SET assignee_id = user_id WHERE assignee_id IS NULL;
+
+CREATE INDEX IF NOT EXISTS idx_tasks_assignee_id ON tasks(assignee_id);
+CREATE INDEX IF NOT EXISTS idx_initiatives_assignee_id ON initiatives(assignee_id);

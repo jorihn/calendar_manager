@@ -88,7 +88,10 @@ router.get('/', async (req: AuthenticatedRequest, res: Response): Promise<void> 
     const userId = req.userId;
     const { type, horizon, status, org_id, cycle_id } = req.query;
 
-    let query = 'SELECT * FROM objectives WHERE user_id = $1';
+    let query = `SELECT * FROM objectives WHERE (
+      user_id = $1
+      OR org_id IN (SELECT org_id FROM org_members WHERE user_id = $1)
+    )`;
     const params: any[] = [userId];
     let paramCount = 2;
 
@@ -146,7 +149,10 @@ router.get('/:id', async (req: AuthenticatedRequest, res: Response): Promise<voi
     }
 
     const result = await pool.query(
-      'SELECT * FROM objectives WHERE id = $1 AND user_id = $2',
+      `SELECT * FROM objectives WHERE id = $1 AND (
+        user_id = $2
+        OR org_id IN (SELECT org_id FROM org_members WHERE user_id = $2)
+      )`,
       [id, userId]
     );
 
@@ -183,7 +189,10 @@ router.patch('/:id', async (req: AuthenticatedRequest, res: Response): Promise<v
     }
 
     const existingObjective = await pool.query(
-      'SELECT * FROM objectives WHERE id = $1 AND user_id = $2',
+      `SELECT * FROM objectives WHERE id = $1 AND (
+        user_id = $2
+        OR org_id IN (SELECT org_id FROM org_members WHERE user_id = $2)
+      )`,
       [id, userId]
     );
 
@@ -288,7 +297,10 @@ router.patch('/:id', async (req: AuthenticatedRequest, res: Response): Promise<v
     const result = await pool.query(
       `UPDATE objectives 
        SET ${updates.join(', ')}
-       WHERE id = $${paramCount++} AND user_id = $${paramCount}
+       WHERE id = $${paramCount++} AND (
+        user_id = $${paramCount}
+        OR org_id IN (SELECT org_id FROM org_members WHERE user_id = $${paramCount})
+       )
        RETURNING *`,
       values
     );
@@ -319,7 +331,10 @@ router.delete('/:id', async (req: AuthenticatedRequest, res: Response): Promise<
     const result = await pool.query(
       `UPDATE objectives 
        SET status = 'archived'
-       WHERE id = $1 AND user_id = $2
+       WHERE id = $1 AND (
+        user_id = $2
+        OR org_id IN (SELECT org_id FROM org_members WHERE user_id = $2)
+       )
        RETURNING *`,
       [id, userId]
     );

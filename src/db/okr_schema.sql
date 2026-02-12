@@ -113,6 +113,7 @@ CREATE TABLE IF NOT EXISTS initiatives (
     kr_id UUID NOT NULL REFERENCES key_results(id) ON DELETE CASCADE,
     title VARCHAR(255) NOT NULL,
     description TEXT,
+    assignee_id UUID REFERENCES users(id) ON DELETE SET NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'done', 'cancelled')),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
@@ -120,6 +121,7 @@ CREATE TABLE IF NOT EXISTS initiatives (
 CREATE INDEX idx_initiatives_user_id ON initiatives(user_id);
 CREATE INDEX idx_initiatives_kr_id ON initiatives(kr_id);
 CREATE INDEX idx_initiatives_status ON initiatives(status);
+CREATE INDEX idx_initiatives_assignee_id ON initiatives(assignee_id);
 
 -- ============================================================
 -- Tasks (OKR tasks, separate from calendar_slots)
@@ -143,6 +145,7 @@ CREATE TABLE IF NOT EXISTS tasks (
     impact_score DECIMAL(5,4) NOT NULL DEFAULT 0,
     priority_score DECIMAL(5,4) NOT NULL DEFAULT 0,
     alignment_depth INTEGER NOT NULL DEFAULT 0,
+    assignee_id UUID REFERENCES users(id) ON DELETE SET NULL,
     blocking BOOLEAN NOT NULL DEFAULT false,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     completed_at TIMESTAMP WITH TIME ZONE
@@ -156,6 +159,7 @@ CREATE INDEX idx_tasks_status ON tasks(status);
 CREATE INDEX idx_tasks_category ON tasks(category);
 CREATE INDEX idx_tasks_priority ON tasks(priority);
 CREATE INDEX idx_tasks_due_date ON tasks(due_date);
+CREATE INDEX idx_tasks_assignee_id ON tasks(assignee_id);
 CREATE INDEX idx_tasks_priority_score ON tasks(priority_score);
 
 -- ============================================================

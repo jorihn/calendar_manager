@@ -24,7 +24,7 @@ const isValidUUID = (uuid: string): boolean => {
 
 router.post('/', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
-    const { title, description, category, objective_id, kr_id, initiative_id, estimate, priority, impact_note, due_date, blocking } = req.body;
+    const { title, description, category, objective_id, kr_id, initiative_id, estimate, priority, impact_note, due_date, blocking, assignee_id } = req.body;
     const userId = req.userId;
 
     if (!title || !category) {
@@ -75,6 +75,14 @@ router.post('/', async (req: AuthenticatedRequest, res: Response): Promise<void>
       return;
     }
 
+    if (assignee_id && !isValidUUID(assignee_id)) {
+      res.status(400).json({
+        code: 'INVALID_ASSIGNEE_ID',
+        message: 'Invalid assignee_id format'
+      });
+      return;
+    }
+
     // Compute root_kr_id from kr_id hierarchy
     let rootKrId: string | null = null;
     if (kr_id) {
@@ -88,8 +96,8 @@ router.post('/', async (req: AuthenticatedRequest, res: Response): Promise<void>
     }
 
     const result = await pool.query(
-      `INSERT INTO tasks (user_id, title, description, category, objective_id, kr_id, initiative_id, estimate, priority, impact_note, due_date, root_kr_id, blocking)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+      `INSERT INTO tasks (user_id, title, description, category, objective_id, kr_id, initiative_id, estimate, priority, impact_note, due_date, root_kr_id, blocking, assignee_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
        RETURNING *`,
       [
         userId,
@@ -104,7 +112,8 @@ router.post('/', async (req: AuthenticatedRequest, res: Response): Promise<void>
         impact_note || null,
         due_date || null,
         rootKrId,
-        blocking || false
+        blocking || false,
+        assignee_id || userId
       ]
     );
 
@@ -125,11 +134,24 @@ router.post('/', async (req: AuthenticatedRequest, res: Response): Promise<void>
 router.get('/', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const userId = req.userId;
-    const { category, status, priority, objective_id, kr_id, initiative_id, blocking } = req.query;
+    const { category, status, priority, objective_id, kr_id, initiative_id, blocking, assignee_id: qAssignee } = req.query;
 
-    let query = 'SELECT * FROM tasks WHERE user_id = $1';
+    let query = `SELECT * FROM tasks WHERE (
+      user_id = $1
+      OR assignee_id = $1
+      OR objective_id IN (
+        SELECT id FROM objectives WHERE org_id IN (SELECT org_id FROM org_members WHERE user_id = $1)
+      )
+    )`;
     const params: any[] = [userId];
     let paramCount = 2;
+
+    if (qAssignee === 'me') {
+      query += ` AND assignee_id = $1`;
+    } else if (qAssignee && isValidUUID(qAssignee as string)) {
+      query += ` AND assignee_id = $${paramCount++}`;
+      params.push(qAssignee);
+    }
 
     if (category) {
       query += ` AND category = $${paramCount++}`;
@@ -178,6 +200,51 @@ router.get('/', async (req: AuthenticatedRequest, res: Response): Promise<void> 
   }
 });
 
+// Get my assigned work with full hierarchy context (must be before /:id)
+router.get('/my-work/assigned', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    const userId = req.userId;
+    const { status } = req.query;
+
+    let statusFilter = `AND t.status != 'done'`;
+    if (status) {
+      statusFilter = `AND t.status = $2`;
+    }
+
+    const params: any[] = [userId];
+    if (status) params.push(status);
+
+    const result = await pool.query(
+      `SELECT
+        t.*,
+        kr.title as kr_title,
+        kr.progress as kr_progress,
+        kr.risk_score as kr_risk_score,
+        o.title as objective_title,
+        o.progress as objective_progress,
+        o.type as objective_type,
+        i.title as initiative_title,
+        u_creator.name as created_by_name
+      FROM tasks t
+      LEFT JOIN key_results kr ON t.kr_id = kr.id
+      LEFT JOIN objectives o ON t.objective_id = o.id
+      LEFT JOIN initiatives i ON t.initiative_id = i.id
+      LEFT JOIN users u_creator ON t.user_id = u_creator.id
+      WHERE t.assignee_id = $1 ${statusFilter}
+      ORDER BY t.priority_score DESC, t.due_date ASC NULLS LAST, t.created_at DESC`,
+      params
+    );
+
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Error fetching assigned work:', error);
+    res.status(500).json({
+      code: 'INTERNAL_ERROR',
+      message: 'Failed to fetch assigned work'
+    });
+  }
+});
+
 router.get('/:id', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
@@ -192,7 +259,13 @@ router.get('/:id', async (req: AuthenticatedRequest, res: Response): Promise<voi
     }
 
     const result = await pool.query(
-      'SELECT * FROM tasks WHERE id = $1 AND user_id = $2',
+      `SELECT * FROM tasks WHERE id = $1 AND (
+        user_id = $2
+        OR assignee_id = $2
+        OR objective_id IN (
+          SELECT id FROM objectives WHERE org_id IN (SELECT org_id FROM org_members WHERE user_id = $2)
+        )
+      )`,
       [id, userId]
     );
 
@@ -217,7 +290,7 @@ router.get('/:id', async (req: AuthenticatedRequest, res: Response): Promise<voi
 router.patch('/:id', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
-    const { title, description, category, objective_id, kr_id, initiative_id, estimate, priority, impact_note, status, due_date, blocking } = req.body;
+    const { title, description, category, objective_id, kr_id, initiative_id, estimate, priority, impact_note, status, due_date, blocking, assignee_id: newAssignee } = req.body;
     const userId = req.userId;
 
     if (!isValidUUID(id)) {
@@ -229,7 +302,13 @@ router.patch('/:id', async (req: AuthenticatedRequest, res: Response): Promise<v
     }
 
     const existingTask = await pool.query(
-      'SELECT * FROM tasks WHERE id = $1 AND user_id = $2',
+      `SELECT * FROM tasks WHERE id = $1 AND (
+        user_id = $2
+        OR assignee_id = $2
+        OR objective_id IN (
+          SELECT id FROM objectives WHERE org_id IN (SELECT org_id FROM org_members WHERE user_id = $2)
+        )
+      )`,
       [id, userId]
     );
 
@@ -335,6 +414,18 @@ router.patch('/:id', async (req: AuthenticatedRequest, res: Response): Promise<v
       values.push(blocking);
     }
 
+    if (newAssignee !== undefined) {
+      if (newAssignee !== null && !isValidUUID(newAssignee)) {
+        res.status(400).json({
+          code: 'INVALID_ASSIGNEE_ID',
+          message: 'Invalid assignee_id format'
+        });
+        return;
+      }
+      updates.push(`assignee_id = $${paramCount++}`);
+      values.push(newAssignee);
+    }
+
     if (status !== undefined) {
       if (!isValidTaskStatus(status)) {
         res.status(400).json({
@@ -365,7 +456,13 @@ router.patch('/:id', async (req: AuthenticatedRequest, res: Response): Promise<v
     const result = await pool.query(
       `UPDATE tasks 
        SET ${updates.join(', ')}
-       WHERE id = $${paramCount++} AND user_id = $${paramCount}
+       WHERE id = $${paramCount++} AND (
+        user_id = $${paramCount}
+        OR assignee_id = $${paramCount}
+        OR objective_id IN (
+          SELECT id FROM objectives WHERE org_id IN (SELECT org_id FROM org_members WHERE user_id = $${paramCount})
+        )
+       )
        RETURNING *`,
       values
     );
@@ -400,7 +497,13 @@ router.post('/:id/complete', async (req: AuthenticatedRequest, res: Response): P
     const result = await pool.query(
       `UPDATE tasks 
        SET status = 'done', completed_at = CURRENT_TIMESTAMP
-       WHERE id = $1 AND user_id = $2
+       WHERE id = $1 AND (
+        user_id = $2
+        OR assignee_id = $2
+        OR objective_id IN (
+          SELECT id FROM objectives WHERE org_id IN (SELECT org_id FROM org_members WHERE user_id = $2)
+        )
+       )
        RETURNING *`,
       [id, userId]
     );

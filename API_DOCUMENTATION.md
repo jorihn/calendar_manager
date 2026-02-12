@@ -403,7 +403,8 @@ Content-Type: application/json
 {
   "kr_id": "uuid",
   "title": "Enterprise Sales Campaign",
-  "description": "Focused outreach to enterprise accounts"
+  "description": "Focused outreach to enterprise accounts",
+  "assignee_id": "uuid (optional, default = creator)"
 }
 ```
 
@@ -412,18 +413,25 @@ Content-Type: application/json
 | `kr_id` | UUID | ✅ | Link tới key result |
 | `title` | string | ✅ | Tiêu đề initiative |
 | `description` | string | ❌ | Mô tả |
+| `assignee_id` | UUID | ❌ | Người thực hiện (default: creator) |
 
 #### GET /initiatives
 
 ```http
-GET /initiatives?kr_id={uuid}&status=active
+GET /initiatives?kr_id={uuid}&status=active&assignee_id=me
 ```
+
+| Query | Mô tả |
+|-------|-------|
+| `kr_id` | Filter theo key result |
+| `status` | `active`, `done`, `cancelled` |
+| `assignee_id` | `me` hoặc UUID — filter theo người thực hiện |
 
 #### GET /initiatives/:id
 
 #### PATCH /initiatives/:id
 
-Update: title, description, status (`active`, `done`, `cancelled`).
+Update: title, description, status, **assignee_id**.
 
 #### DELETE /initiatives/:id
 
@@ -448,6 +456,7 @@ Content-Type: application/json
   "objective_id": "uuid",
   "kr_id": "uuid",
   "initiative_id": "uuid",
+  "assignee_id": "uuid (optional, default = creator)",
   "priority": "high",
   "due_date": "2026-02-15T17:00:00+07:00",
   "blocking": false,
@@ -463,6 +472,7 @@ Content-Type: application/json
 | `objective_id` | UUID | ❌ | Link objective |
 | `kr_id` | UUID | ❌ | Link key result |
 | `initiative_id` | UUID | ❌ | Link initiative |
+| `assignee_id` | UUID | ❌ | Người thực hiện (default: creator) |
 | `priority` | enum | ❌ | `low`, `medium`, `high`, `critical` (default: medium) |
 | `due_date` | ISO 8601 | ❌ | Deadline |
 | `blocking` | boolean | ❌ | Task này đang block tiến trình? (default: false) |
@@ -479,7 +489,7 @@ Content-Type: application/json
 #### GET /tasks
 
 ```http
-GET /tasks?category=work&status=todo&priority=critical&kr_id={uuid}&initiative_id={uuid}&blocking=true
+GET /tasks?category=work&status=todo&priority=critical&kr_id={uuid}&initiative_id={uuid}&blocking=true&assignee_id=me
 ```
 
 **Kết quả sorted theo `priority_score DESC`.**
@@ -493,14 +503,72 @@ GET /tasks?category=work&status=todo&priority=critical&kr_id={uuid}&initiative_i
 | `kr_id` | Filter theo key result |
 | `initiative_id` | Filter theo initiative |
 | `blocking` | `true` → chỉ blocking tasks |
+| `assignee_id` | `me` hoặc UUID — filter theo người thực hiện |
+
+#### GET /tasks/my-work/assigned
+
+Tasks được giao cho user hiện tại, kèm **full hierarchy context** (KR, Objective, Initiative).
+
+```http
+GET /tasks/my-work/assigned
+GET /tasks/my-work/assigned?status=doing
+Authorization: Bearer <token>
+```
+
+**Response:**
+```json
+[
+  {
+    "id": "uuid",
+    "title": "Prepare pitch deck",
+    "priority_score": 0.85,
+    "status": "todo",
+    "assignee_id": "uuid",
+    "kr_title": "MRR $50k",
+    "kr_progress": 0.4,
+    "kr_risk_score": 0.7,
+    "objective_title": "Increase Revenue",
+    "objective_progress": 0.35,
+    "initiative_title": "Enterprise Sales Campaign",
+    "created_by_name": "Jori"
+  }
+]
+```
+
+Default: chỉ tasks chưa done. Dùng `?status=done` để xem completed.
 
 #### PATCH /tasks/:id
 
-Có thể update: title, description, category, objective_id, kr_id, initiative_id, estimate, priority, impact_note, status, due_date, blocking.
+Có thể update: title, description, category, objective_id, kr_id, initiative_id, estimate, priority, impact_note, status, due_date, blocking, **assignee_id**.
 
 #### POST /tasks/:id/complete
 
 Đánh dấu hoàn thành. Tự set `status='done'`, `completed_at=now()`.
+
+---
+
+## 👁️ Visibility Rules (Multi-user)
+
+User có thể thấy data trong các trường hợp sau:
+
+| Entity | Quy tắc visibility |
+|--------|--------------------|
+| **Objectives** | `user_id = me` HOẶC objective thuộc org mà tôi là member |
+| **Key Results** | `user_id = me` HOẶC KR thuộc objective visible |
+| **Tasks** | `user_id = me` HOẶC `assignee_id = me` HOẶC task thuộc objective visible |
+| **Initiatives** | `user_id = me` HOẶC `assignee_id = me` HOẶC initiative thuộc KR/objective visible |
+
+**Phân biệt `user_id` vs `assignee_id`:**
+- `user_id` = người tạo (creator)
+- `assignee_id` = người thực hiện (nếu không set, default = creator)
+
+**Workflow giao việc:**
+1. Owner tạo org, invite members
+2. Owner tạo objectives, KRs với `org_id`
+3. Owner tạo tasks/initiatives với `assignee_id` = member's user_id
+4. Member gọi `GET /tasks/my-work/assigned` để xem tasks của mình + context
+5. Member gọi `PATCH /tasks/:id` để update status
+6. Scoring cascade tự động cập nhật scores
 
 ---
 

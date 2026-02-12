@@ -65,7 +65,12 @@ router.post('/', async (req: AuthenticatedRequest, res: Response): Promise<void>
 
     if (parent_kr_id) {
       const parentKR = await pool.query(
-        'SELECT id, root_kr_id, level FROM key_results WHERE id = $1 AND user_id = $2',
+        `SELECT id, root_kr_id, level FROM key_results WHERE id = $1 AND (
+          user_id = $2
+          OR objective_id IN (
+            SELECT id FROM objectives WHERE org_id IN (SELECT org_id FROM org_members WHERE user_id = $2)
+          )
+        )`,
         [parent_kr_id, userId]
       );
 
@@ -106,7 +111,12 @@ router.get('/', async (req: AuthenticatedRequest, res: Response): Promise<void> 
     const userId = req.userId;
     const { objective_id } = req.query;
 
-    let query = 'SELECT * FROM key_results WHERE user_id = $1';
+    let query = `SELECT * FROM key_results WHERE (
+      user_id = $1
+      OR objective_id IN (
+        SELECT id FROM objectives WHERE org_id IN (SELECT org_id FROM org_members WHERE user_id = $1)
+      )
+    )`;
     const params: any[] = [userId];
     let paramCount = 2;
 
@@ -151,7 +161,12 @@ router.get('/:id', async (req: AuthenticatedRequest, res: Response): Promise<voi
     }
 
     const result = await pool.query(
-      'SELECT * FROM key_results WHERE id = $1 AND user_id = $2',
+      `SELECT * FROM key_results WHERE id = $1 AND (
+        user_id = $2
+        OR objective_id IN (
+          SELECT id FROM objectives WHERE org_id IN (SELECT org_id FROM org_members WHERE user_id = $2)
+        )
+      )`,
       [id, userId]
     );
 
@@ -188,7 +203,12 @@ router.patch('/:id', async (req: AuthenticatedRequest, res: Response): Promise<v
     }
 
     const existingKR = await pool.query(
-      'SELECT * FROM key_results WHERE id = $1 AND user_id = $2',
+      `SELECT * FROM key_results WHERE id = $1 AND (
+        user_id = $2
+        OR objective_id IN (
+          SELECT id FROM objectives WHERE org_id IN (SELECT org_id FROM org_members WHERE user_id = $2)
+        )
+      )`,
       [id, userId]
     );
 
@@ -269,7 +289,12 @@ router.patch('/:id', async (req: AuthenticatedRequest, res: Response): Promise<v
     const result = await pool.query(
       `UPDATE key_results 
        SET ${updates.join(', ')}
-       WHERE id = $${paramCount++} AND user_id = $${paramCount}
+       WHERE id = $${paramCount++} AND (
+        user_id = $${paramCount}
+        OR objective_id IN (
+          SELECT id FROM objectives WHERE org_id IN (SELECT org_id FROM org_members WHERE user_id = $${paramCount})
+        )
+       )
        RETURNING *`,
       values
     );
@@ -301,7 +326,12 @@ router.delete('/:id', async (req: AuthenticatedRequest, res: Response): Promise<
     }
 
     const result = await pool.query(
-      'DELETE FROM key_results WHERE id = $1 AND user_id = $2 RETURNING *',
+      `DELETE FROM key_results WHERE id = $1 AND (
+        user_id = $2
+        OR objective_id IN (
+          SELECT id FROM objectives WHERE org_id IN (SELECT org_id FROM org_members WHERE user_id = $2)
+        )
+      ) RETURNING *`,
       [id, userId]
     );
 

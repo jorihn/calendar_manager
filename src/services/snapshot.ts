@@ -81,8 +81,11 @@ export async function generateSnapshot(userId: string, cycleId?: string): Promis
     }
   }
 
-  // Objectives
-  let objQuery = 'SELECT id, title, progress, risk_score, type, horizon FROM objectives WHERE user_id = $1 AND status = $2';
+  // Objectives (own + org-visible)
+  let objQuery = `SELECT id, title, progress, risk_score, type, horizon FROM objectives WHERE (
+    user_id = $1
+    OR org_id IN (SELECT org_id FROM org_members WHERE user_id = $1)
+  ) AND status = $2`;
   const objParams: any[] = [userId, 'active'];
   if (cycleId) {
     objQuery += ' AND cycle_id = $3';
@@ -112,9 +115,9 @@ export async function generateSnapshot(userId: string, cycleId?: string): Promis
               o.cycle_id
        FROM key_results kr
        LEFT JOIN objectives o ON kr.objective_id = o.id
-       WHERE kr.user_id = $1 AND kr.objective_id = ANY($2)
+       WHERE kr.objective_id = ANY($1)
        ORDER BY kr.risk_score DESC`,
-      [userId, objectiveIds]
+      [objectiveIds]
     );
 
     for (const kr of krs.rows) {
@@ -181,25 +184,43 @@ export async function generateSnapshot(userId: string, cycleId?: string): Promis
       COUNT(*) FILTER (WHERE status = 'done') as done,
       COUNT(*) FILTER (WHERE due_date < NOW() AND status != 'done') as overdue,
       COUNT(*) FILTER (WHERE kr_id IS NULL AND objective_id IS NULL) as unlinked
-     FROM tasks WHERE user_id = $1`,
+     FROM tasks WHERE (
+      user_id = $1
+      OR assignee_id = $1
+      OR objective_id IN (
+        SELECT id FROM objectives WHERE org_id IN (SELECT org_id FROM org_members WHERE user_id = $1)
+      )
+     )`,
     [userId]
   );
 
   const stats = taskStats.rows[0];
 
-  // Blocked tasks
+  // Blocked tasks (own + assigned + org)
   const blockedTasks = await pool.query(
-    `SELECT id, title FROM tasks WHERE user_id = $1 AND blocking = true AND status != 'done'`,
+    `SELECT id, title FROM tasks WHERE (
+      user_id = $1
+      OR assignee_id = $1
+      OR objective_id IN (
+        SELECT id FROM objectives WHERE org_id IN (SELECT org_id FROM org_members WHERE user_id = $1)
+      )
+    ) AND blocking = true AND status != 'done'`,
     [userId]
   );
 
-  // Top priority tasks (not done)
+  // Top priority tasks (not done, own + assigned + org)
   const priorityTasks = await pool.query(
     `SELECT t.id, t.title, t.priority_score, t.status, t.due_date, t.blocking, t.kr_id,
             COALESCE(kr.risk_score, 0) as kr_risk
      FROM tasks t
      LEFT JOIN key_results kr ON t.kr_id = kr.id
-     WHERE t.user_id = $1 AND t.status != 'done'
+     WHERE (
+      t.user_id = $1
+      OR t.assignee_id = $1
+      OR t.objective_id IN (
+        SELECT id FROM objectives WHERE org_id IN (SELECT org_id FROM org_members WHERE user_id = $1)
+      )
+     ) AND t.status != 'done'
      ORDER BY t.priority_score DESC
      LIMIT 10`,
     [userId]

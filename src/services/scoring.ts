@@ -410,9 +410,15 @@ export async function cascadeFromTask(taskId: string): Promise<void> {
  * Recompute all scores for a user (used for bulk refresh).
  */
 export async function recomputeAll(userId: string): Promise<void> {
-  // 1. All tasks
+  // 1. All tasks (own + assigned + org)
   const tasks = await pool.query(
-    'SELECT id FROM tasks WHERE user_id = $1',
+    `SELECT id FROM tasks WHERE (
+      user_id = $1
+      OR assignee_id = $1
+      OR objective_id IN (
+        SELECT id FROM objectives WHERE org_id IN (SELECT org_id FROM org_members WHERE user_id = $1)
+      )
+    )`,
     [userId]
   );
 
@@ -421,10 +427,15 @@ export async function recomputeAll(userId: string): Promise<void> {
     await computeAlignmentDepth(task.id);
   }
 
-  // 2. All leaf KRs (bottom-up)
+  // 2. All leaf KRs (bottom-up, own + org)
   const leafKRs = await pool.query(
     `SELECT kr.id FROM key_results kr
-     WHERE kr.user_id = $1
+     WHERE (
+      kr.user_id = $1
+      OR kr.objective_id IN (
+        SELECT id FROM objectives WHERE org_id IN (SELECT org_id FROM org_members WHERE user_id = $1)
+      )
+     )
      AND NOT EXISTS (SELECT 1 FROM key_results child WHERE child.parent_kr_id = kr.id)
      ORDER BY kr.level DESC`,
     [userId]
@@ -434,9 +445,12 @@ export async function recomputeAll(userId: string): Promise<void> {
     await cascadeFromKR(kr.id);
   }
 
-  // 3. All objectives
+  // 3. All objectives (own + org)
   const objectives = await pool.query(
-    'SELECT id FROM objectives WHERE user_id = $1 AND status = $2',
+    `SELECT id FROM objectives WHERE (
+      user_id = $1
+      OR org_id IN (SELECT org_id FROM org_members WHERE user_id = $1)
+    ) AND status = $2`,
     [userId, 'active']
   );
 
