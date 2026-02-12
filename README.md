@@ -1,516 +1,307 @@
-# Calendar Manager Backend
+🎯 1. Tầm nhìn dự án
+❝ OKR Operating System for AI Agents ❞
 
-Backend API cho hệ thống quản lý lịch làm việc với **multi-user** và **multi-agent** support.
+Đây không phải:
 
-## 🎯 Overview
+❌ OKR SaaS truyền thống có thêm AI
 
-Hệ thống cho phép:
-- **Nhiều user** đăng ký và quản lý lịch riêng
-- **Nhiều agent** (OpenClaw, AI assistants) của các user khác nhau sử dụng API
-- Mỗi user có thể có nhiều token với các role khác nhau (owner, agent, manager)
-- Web interface để test API từ browser
-- RESTful API với authentication token-based
+❌ Task management tool có chatbot
 
-## Tech Stack
+Mà là:
 
-- **Node.js 22.x** + **TypeScript**
-- **Express** - REST API framework
-- **PostgreSQL 14+** - Database
-- **pg** - PostgreSQL client
+✅ Một AI-native execution system
+nơi AI Agent là người vận hành,
+còn backend chỉ là structured reasoning layer.
 
-## Yêu cầu hệ thống
+🧠 2. Agent-as-a-Service nghĩa là gì ở đây?
 
-- Node.js >= 22.x
-- PostgreSQL >= 14.x
-- npm hoặc yarn
+Agent không chỉ:
 
-## Cài đặt
+đọc dữ liệu
 
-### 1. Clone và cài đặt dependencies
+trả lời câu hỏi
 
-```bash
-npm install
-```
+Mà phải có khả năng:
 
-### 2. Cấu hình database
+hiểu alignment
 
-Tạo file `.env` từ `.env.example`:
+phân tích risk
 
-```bash
-cp .env.example .env
-```
+gợi ý ưu tiên
 
-Chỉnh sửa `.env`:
+phát hiện bottleneck
 
-```env
-PORT=3000
-DATABASE_URL=postgresql://calendar_user@localhost:5432/calendar_manager
-NODE_ENV=development
-```
+điều phối task
 
-### 3. Setup PostgreSQL
+cảnh báo lệch mục tiêu
 
-```bash
-# Tạo database và user
-sudo -u postgres psql << 'EOF'
-CREATE DATABASE calendar_manager;
-CREATE USER calendar_user;
-GRANT ALL PRIVILEGES ON DATABASE calendar_manager TO calendar_user;
-ALTER DATABASE calendar_manager OWNER TO calendar_user;
-\q
-EOF
+Để làm được điều đó:
 
-# Chạy schema SQL
-cat src/db/schema.sql | sudo -u postgres psql -d calendar_manager
-```
+Backend phải được thiết kế cho AI suy nghĩ, không phải cho UI hiển thị.
 
-Schema sẽ tạo:
-- Bảng `users`, `agent_tokens`, `calendar_slots`
-- Extension `pgcrypto` cho random token generation
-- 1 user seed với auto-generated token
+🔥 3. Triết lý kiến trúc
+Nguyên tắc 1: Alignment phải là số, không phải text
 
-## Chạy server
+Agent không suy nghĩ tốt với:
 
-### Development mode
+“Tăng trưởng bền vững”
 
-```bash
-npm run dev
-```
+Agent suy nghĩ tốt với:
 
-### Production mode
+progress = 0.62
+risk = 0.3
+impact = 0.15
 
-```bash
-npm run build
-npm start
-```
+Nguyên tắc 2: Không để LLM traverse cây dữ liệu
 
-Server sẽ chạy tại:
-- API: `http://localhost:3000`
-- Web Interface: `http://localhost:3000` (mở browser)
+LLM tốn token nếu phải:
 
-## 🌐 Web Interface
+Task → Initiative → KR → Parent KR → Objective
 
-Mở browser và truy cập `http://localhost:3000` để:
-1. **Đăng ký user mới** và nhận token tự động
-2. **Tạo calendar slots** với form trực quan
-3. **Xem danh sách slots** của bạn
-4. **Test API** ngay trên browser
 
-**Từ máy khác trong cùng mạng:**
-```bash
-# Lấy IP của server
-hostname -I | awk '{print $1}'
+Thay vào đó:
 
-# Truy cập từ máy khác
-http://192.168.x.x:3000
-```
+Ta lưu sẵn:
 
-## API Endpoints
+task.root_kr_id
+task.objective_id
+task.priority_score
+task.alignment_score
 
-### Health Check
 
-```bash
-GET /health
-```
+LLM chỉ cần đọc 1 JSON phẳng.
 
-### Authentication Endpoints
+Nguyên tắc 3: Tách 3 lớp dữ liệu
+1️⃣ Raw Layer (normalized DB)
+2️⃣ Computed Layer (pre-aggregated metrics)
+3️⃣ AI Snapshot Layer (LLM-optimized JSON)
 
-#### 1. Đăng ký User mới
 
-```bash
-POST /auth/register
-Content-Type: application/json
+Agent chỉ đọc layer 2 & 3.
 
-{
-  "name": "John Doe",
-  "timezone": "Asia/Ho_Chi_Minh"
-}
-```
+🏗 4. Mô hình dữ liệu sau khi điều chỉnh (AI-first)
 
-**Response 201:**
-```json
-{
-  "user": {
-    "id": "uuid",
-    "name": "John Doe",
-    "timezone": "Asia/Ho_Chi_Minh",
-    "created_at": "2026-02-06T01:05:00.000Z"
-  },
-  "token": "xK8vN2mP5qR7sT9uV1wX3yZ4aB6cD8eF0gH2iJ4kL6mN8oP0qR2sT4uV6wX8yZ0a==",
-  "role": "owner"
-}
-```
+Ta điều chỉnh lại một chút để tối ưu cho Agent.
 
-#### 2. Tạo Token mới cho User
+A. Core Entities (normalized)
+Organization
+User
+Cycle
+Objective
+KeyResult
+Initiative
+Task
 
-```bash
-POST /auth/token
-Content-Type: application/json
+Cascade chỉ đi qua KR:
+
+KR.parent_kr_id
+KR.root_kr_id
+KR.level
+
+B. Computed Fields (rất quan trọng)
+KeyResult
+progress_percentage
+aggregated_progress
+risk_score
+importance_weight
+velocity
+dependency_score
+
+Task
+impact_score
+priority_score
+blocking
+alignment_depth
+root_kr_id
+objective_id
+
+
+→ Không cần join khi Agent đọc.
+
+C. AI Snapshot Table
+ai_org_snapshot
+
+
+Ví dụ nội dung:
 
 {
-  "user_id": "uuid",
-  "role": "agent"
-}
-```
-
-**Response 201:**
-```json
-{
-  "token": "aB1cD2eF3gH4iJ5kL6mN7oP8qR9sT0uV1wX2yZ3aB4cD5eF6gH7iJ8kL9mN0oP1q==",
-  "role": "agent",
-  "created_at": "2026-02-06T01:10:00.000Z"
-}
-```
-
-### Calendar Endpoints
-
-Tất cả các endpoint `/calendar/*` yêu cầu Bearer token:
-
-```
-Authorization: Bearer <your-token>
-```
-
-#### 1. Tạo lịch mới
-
-```bash
-POST /calendar/slots
-Content-Type: application/json
-Authorization: Bearer <your-token>
-
-{
-  "title": "Team Meeting",
-  "start_time": "2026-02-10T09:00:00Z",
-  "end_time": "2026-02-10T10:00:00Z",
-  "type": "meeting"
-}
-```
-
-**Timestamp formats hỗ trợ:**
-- ISO 8601 với UTC: `2026-02-10T09:00:00Z`
-- ISO 8601 với timezone: `2026-02-10T16:00:00+07:00`
-- ISO 8601 local: `2026-02-10T16:00:00`
-
-**Response 201:**
-```json
-{
-  "id": "uuid",
-  "user_id": "uuid",
-  "title": "Team Meeting",
-  "start_time": "2024-01-15T09:00:00Z",
-  "end_time": "2024-01-15T10:00:00Z",
-  "type": "meeting",
-  "status": "active",
-  "created_at": "...",
-  "updated_at": "..."
-}
-```
-
-**Error 409 (TIME_CONFLICT):**
-```json
-{
-  "code": "TIME_CONFLICT",
-  "message": "This time slot overlaps with an existing active slot",
-  "details": { "conflicting_slot_id": "uuid" }
-}
-```
-
-#### 2. Cập nhật lịch
-
-```bash
-PUT /calendar/slots/{id}
-Content-Type: application/json
-Authorization: Bearer <your-token>
-
-{
-  "title": "Updated Meeting",
-  "start_time": "2026-02-10T10:00:00Z",
-  "end_time": "2026-02-10T11:00:00Z",
-  "status": "cancelled"
-}
-```
-
-**Các trường có thể update:**
-- `title`, `start_time`, `end_time`, `type`
-- `status`: `active` hoặc `cancelled`
-
-**Response 200:** Trả về slot đã cập nhật
-
-**Error 403:** Không có quyền sửa slot của user khác
-
-#### 3. Lấy danh sách lịch
-
-```bash
-GET /calendar/slots
-Authorization: Bearer <your-token>
-```
-
-**Response 200:**
-```json
-[
-  {
-    "id": "uuid",
-    "title": "Meeting",
-    "start_time": "2026-02-10T09:00:00.000Z",
-    "end_time": "2026-02-10T10:00:00.000Z",
-    "start_time_local": "2026-02-10 16:00:00",
-    "end_time_local": "2026-02-10 17:00:00",
-    "type": "meeting",
-    "status": "active"
-  }
-]
-```
-
-**Lưu ý:**
-- Chỉ trả về slots có `status = 'active'`
-- `start_time`/`end_time`: UTC timestamp
-- `start_time_local`/`end_time_local`: GMT+7 (Asia/Ho_Chi_Minh)
-
-#### 4. Kiểm tra lịch rảnh/bận
-
-```bash
-GET /calendar/availability?from=2026-02-10T00:00:00Z&to=2026-02-10T23:59:59Z
-Authorization: Bearer <your-token>
-```
-
-**Response 200:**
-```json
-{
-  "busy": [
-    {
-      "start": "2024-01-15T09:00:00Z",
-      "end": "2024-01-15T10:00:00Z"
-    }
+  "cycle": "Q1",
+  "objectives": [
+    { "id": 1, "p": 0.62, "r": 0.3 }
   ],
-  "free": [
-    {
-      "start": "2024-01-15T00:00:00Z",
-      "end": "2024-01-15T09:00:00Z"
-    },
-    {
-      "start": "2024-01-15T10:00:00Z",
-      "end": "2024-01-15T23:59:59Z"
-    }
+  "top_risky_krs": [
+    { "id": 5, "r": 0.7 }
+  ],
+  "overdue_tasks": 12
+}
+
+
+Dùng key ngắn:
+
+p = progress
+
+r = risk
+
+Giảm 30–40% token.
+
+📌 5. Những câu hỏi user sẽ quan tâm
+
+Ta liệt kê theo nhóm.
+
+🔍 Nhóm 1 – Alignment
+
+Task tôi đang làm phục vụ mục tiêu nào?
+
+Công việc tôi có thực sự quan trọng không?
+
+Team tôi có đang đi lệch chiến lược không?
+
+KR nào không có task support?
+
+📊 Nhóm 2 – Progress
+
+Chúng ta đang đạt bao nhiêu % mục tiêu?
+
+KR nào đang chậm?
+
+Mục tiêu nào có nguy cơ fail?
+
+Nếu tiếp tục tốc độ này thì có đạt target không?
+
+⚠ Nhóm 3 – Risk
+
+KR nào đang rủi ro nhất?
+
+Task nào đang gây bottleneck?
+
+Ai đang quá tải?
+
+Nếu task X trễ thì ảnh hưởng gì?
+
+🎯 Nhóm 4 – Prioritization
+
+Hôm nay tôi nên làm gì trước?
+
+Task nào có impact cao nhất?
+
+Có task nào không align mục tiêu không?
+
+Có nên dừng task này không?
+
+👁 Nhóm 5 – Transparency
+
+Mọi người đang làm gì?
+
+Team nào đóng góp nhiều nhất?
+
+Ai đang làm việc không phục vụ KR?
+
+Tài nguyên đang phân bổ đúng chưa?
+
+🧠 6. Chứng minh hệ thống này trả lời được hết với ít token
+
+Giả sử Agent nhận được:
+
+{
+  "t": [
+    { "id": 1, "p": 0.8, "i": 0.3, "r": 0.2 }
+  ],
+  "k": [
+    { "id": 5, "p": 0.4, "r": 0.7 }
+  ],
+  "o": [
+    { "id": 2, "p": 0.62 }
   ]
 }
-```
 
-## Error Codes
 
-| Code | Mô tả |
-|------|-------|
-| `MISSING_TOKEN` | Thiếu Authorization header |
-| `INVALID_TOKEN` | Token không hợp lệ |
-| `MISSING_FIELDS` | Thiếu trường bắt buộc |
-| `INVALID_TIMESTAMP` | Timestamp không đúng định dạng ISO 8601 |
-| `INVALID_TIME_RANGE` | start_time phải < end_time |
-| `TIME_CONFLICT` | Trùng lịch với slot active khác |
-| `SLOT_NOT_FOUND` | Không tìm thấy slot |
-| `FORBIDDEN` | Không có quyền truy cập |
-| `INVALID_TYPE` | Type không hợp lệ (phải là: work, meeting, focus, personal) |
-| `INVALID_STATUS` | Status không hợp lệ (phải là: active, cancelled) |
-| `AUTH_ERROR` | Lỗi xác thực token |
+LLM có thể:
 
-## 🚀 Deploy lên VPS
+So sánh p (progress)
 
-### 1. Cài đặt trên VPS
+So sánh r (risk)
 
-**Xem hướng dẫn chi tiết trong `DEPLOY.md`**
+So sánh i (impact)
 
-```bash
-# Cài Node.js 22.x
-curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
-sudo apt-get install -y nodejs
+Không cần text dài.
 
-# Cài PostgreSQL
-sudo apt update
-sudo apt install postgresql postgresql-contrib
+Ví dụ câu hỏi 13:
 
-# Clone code
-mkdir -p ~/app
-cd ~/app
-git clone git@github.com:jorihn/calendar_manager.git
-cd calendar_manager
+Hôm nay tôi nên làm gì trước?
 
-# Cài dependencies
-npm install
+Agent chỉ cần:
 
-# Setup database
-sudo -u postgres psql << 'EOF'
-CREATE DATABASE calendar_manager;
-CREATE USER calendar_user;
-GRANT ALL PRIVILEGES ON DATABASE calendar_manager TO calendar_user;
-ALTER DATABASE calendar_manager OWNER TO calendar_user;
-\q
-EOF
+ORDER BY priority_score DESC
 
-# Chạy schema SQL
-cat src/db/schema.sql | sudo -u postgres psql -d calendar_manager
 
-# Cấu hình .env
-cat > .env << 'EOF'
-PORT=3000
-DATABASE_URL=postgresql://calendar_user@localhost:5432/calendar_manager
-NODE_ENV=production
-EOF
+Không cần reasoning dài.
 
-# Build
-npm run build
-```
+Ví dụ câu hỏi 9:
 
-### 2. Chạy với PM2
+KR nào rủi ro nhất?
 
-```bash
-npm install -g pm2
-pm2 start dist/index.js --name calendar-api
-pm2 save
-pm2 startup
-```
+Chỉ cần:
 
-### 3. Truy cập từ xa
+SELECT max(risk_score)
 
-**Web Interface:**
-```
-http://VPS_IP:3000
-```
+Ví dụ câu hỏi 3:
 
-**API từ OpenClaw/Agent:**
-```bash
-# 1. Đăng ký user và lấy token
-curl -X POST http://VPS_IP:3000/auth/register \
-  -H "Content-Type: application/json" \
-  -d '{"name": "Agent Name", "timezone": "Asia/Ho_Chi_Minh"}'
+Team có lệch chiến lược không?
 
-# 2. Sử dụng token để gọi API
-curl -X POST http://VPS_IP:3000/calendar/slots \
-  -H "Authorization: Bearer <token-from-step-1>" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "title": "Test Meeting",
-    "start_time": "2026-02-10T09:00:00Z",
-    "end_time": "2026-02-10T10:00:00Z",
-    "type": "meeting"
-  }'
-```
+So sánh:
 
-**Firewall:**
-```bash
-sudo ufw allow 3000/tcp
-sudo ufw status
-```
+sum(child_progress) vs parent_target
 
-## 🔧 Troubleshooting
 
-### Lỗi PostgreSQL Authentication trên VPS
+Đã precomputed.
 
-Nếu gặp lỗi `AUTH_ERROR` hoặc `password authentication failed`:
+📉 7. Token Optimization cụ thể
+Thiết kế truyền thống	Thiết kế AI-first
+Nested JSON sâu	Flat JSON
+Text dài	Numeric fields
+Runtime traversal	Pre-aggregated
+1000–2000 token context	200–400 token context
 
-#### 1. Kiểm tra PostgreSQL đang chạy
-```bash
-sudo systemctl status postgresql
-sudo netstat -tlnp | grep 5432
-```
+Tiết kiệm ~60–80% token.
 
-#### 2. Kiểm tra user và database tồn tại
-```bash
-sudo -u postgres psql -c "\du calendar_user"
-sudo -u postgres psql -c "\l calendar_manager"
-```
+🚀 8. Vì sao kiến trúc này scale tốt
 
-#### 3. Kiểm tra pg_hba.conf
-```bash
-sudo cat /etc/postgresql/*/main/pg_hba.conf | grep -E "^host.*127.0.0.1"
-```
+Không phụ thuộc LLM để tính toán
 
-**Nên có dòng:**
-```
-host    all    all    127.0.0.1/32    trust
-```
+Tính toán nằm ở backend
 
-Nếu không có hoặc sai, sửa lại:
-```bash
-sudo nano /etc/postgresql/*/main/pg_hba.conf
-# Thêm hoặc sửa dòng:
-host    all    all    127.0.0.1/32    trust
+LLM chỉ làm reasoning chiến lược
 
-# Restart PostgreSQL
-sudo systemctl restart postgresql
-```
+Snapshot giúp constant token size dù có 5000 task
 
-#### 4. Tạo lại user nếu cần
-```bash
-sudo -u postgres psql << 'EOF'
-DROP USER IF EXISTS calendar_user;
-CREATE USER calendar_user;
-GRANT ALL PRIVILEGES ON DATABASE calendar_manager TO calendar_user;
-ALTER DATABASE calendar_manager OWNER TO calendar_user;
-\q
-EOF
-```
+🔮 9. Nếu muốn nâng cấp thêm
 
-#### 5. Test connection
-```bash
-psql -U calendar_user -d calendar_manager -h localhost -c "SELECT 1;"
-```
+Có thể thêm:
 
-#### 6. Kiểm tra .env
-```bash
-cat ~/app/calendar_manager/.env
-# Phải có: DATABASE_URL=postgresql://calendar_user@localhost:5432/calendar_manager
-```
+Vector summary embedding cho mỗi cycle
 
-#### 7. Restart PM2
-```bash
-pm2 delete calendar-api
-pm2 start dist/index.js --name calendar-api
-pm2 logs calendar-api --lines 50
-```
+Risk prediction model riêng
 
-### Lỗi Port đã được sử dụng
-```bash
-# Tìm process đang dùng port 3000
-sudo lsof -i :3000
+Event-driven scoring engine
 
-# Kill process
-sudo kill -9 <PID>
-```
+Temporal trend analysis (velocity regression)
 
-### Lỗi Permission Denied khi chạy schema.sql
-```bash
-# Dùng pipe thay vì file path
-cat src/db/schema.sql | sudo -u postgres psql -d calendar_manager
-```
+🏁 10. Kết luận định vị sản phẩm
 
-## Nguyên tắc thiết kế
+Đây không phải:
 
-- ✅ Server là nguồn sự thật duy nhất
-- ✅ Không trust client - user_id lấy từ token
-- ✅ Validation chặt chẽ (time range, overlap)
-- ✅ Error codes rõ ràng cho agent
-- ✅ Tất cả timestamp lưu dưới dạng UTC
-- ✅ Soft delete bằng status = 'cancelled'
-- ✅ Deterministic - không dùng AI/heuristic
+“OKR tool có AI”
 
-## 📚 Tài liệu khác
+Mà là:
 
-- **`DEPLOY.md`** - Hướng dẫn deploy chi tiết lên VPS
-- **`API_GUIDE.md`** - Hướng dẫn sử dụng API với curl examples
-- **`src/db/schema.sql`** - Database schema
+“AI Execution Engine với OKR làm structured backbone”
 
-## 🔮 Roadmap
+Hệ thống được build cho:
 
-Hệ thống hiện tại đã hỗ trợ:
-- ✅ Multi-user và multi-agent
-- ✅ Token-based authentication
-- ✅ Web interface
-- ✅ Timezone support
-- ✅ Conflict detection
+AI reasoning first
 
-Có thể mở rộng:
-- Webhook/notification khi có calendar changes
-- Recurring events
-- Calendar sharing giữa users
-- OAuth integration
+Token efficiency
 
-## License
+Alignment quantification
 
-MIT
+Real-time risk propagation

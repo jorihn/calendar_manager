@@ -23,7 +23,7 @@ const isValidUUID = (uuid: string): boolean => {
 
 router.post('/', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
-    const { title, description, type, horizon, success_def } = req.body;
+    const { title, description, type, horizon, success_def, org_id, cycle_id } = req.body;
     const userId = req.userId;
 
     if (!title || !type || !horizon) {
@@ -50,11 +50,27 @@ router.post('/', async (req: AuthenticatedRequest, res: Response): Promise<void>
       return;
     }
 
+    if (org_id && !isValidUUID(org_id)) {
+      res.status(400).json({
+        code: 'INVALID_ORG_ID',
+        message: 'Invalid org_id format'
+      });
+      return;
+    }
+
+    if (cycle_id && !isValidUUID(cycle_id)) {
+      res.status(400).json({
+        code: 'INVALID_CYCLE_ID',
+        message: 'Invalid cycle_id format'
+      });
+      return;
+    }
+
     const result = await pool.query(
-      `INSERT INTO objectives (user_id, title, description, type, horizon, success_def)
-       VALUES ($1, $2, $3, $4, $5, $6)
+      `INSERT INTO objectives (user_id, title, description, type, horizon, success_def, org_id, cycle_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
        RETURNING *`,
-      [userId, title, description || null, type, horizon, success_def || null]
+      [userId, title, description || null, type, horizon, success_def || null, org_id || null, cycle_id || null]
     );
 
     res.status(201).json(result.rows[0]);
@@ -70,7 +86,7 @@ router.post('/', async (req: AuthenticatedRequest, res: Response): Promise<void>
 router.get('/', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const userId = req.userId;
-    const { type, horizon, status } = req.query;
+    const { type, horizon, status, org_id, cycle_id } = req.query;
 
     let query = 'SELECT * FROM objectives WHERE user_id = $1';
     const params: any[] = [userId];
@@ -91,6 +107,16 @@ router.get('/', async (req: AuthenticatedRequest, res: Response): Promise<void> 
       params.push(status);
     } else {
       query += ` AND status = 'active'`;
+    }
+
+    if (org_id) {
+      query += ` AND org_id = $${paramCount++}`;
+      params.push(org_id);
+    }
+
+    if (cycle_id) {
+      query += ` AND cycle_id = $${paramCount++}`;
+      params.push(cycle_id);
     }
 
     query += ' ORDER BY created_at DESC';
@@ -145,7 +171,7 @@ router.get('/:id', async (req: AuthenticatedRequest, res: Response): Promise<voi
 router.patch('/:id', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
-    const { title, description, type, horizon, success_def, status } = req.body;
+    const { title, description, type, horizon, success_def, status, org_id, cycle_id } = req.body;
     const userId = req.userId;
 
     if (!isValidUUID(id)) {
@@ -210,6 +236,30 @@ router.patch('/:id', async (req: AuthenticatedRequest, res: Response): Promise<v
     if (success_def !== undefined) {
       updates.push(`success_def = $${paramCount++}`);
       values.push(success_def);
+    }
+
+    if (org_id !== undefined) {
+      if (org_id !== null && !isValidUUID(org_id)) {
+        res.status(400).json({
+          code: 'INVALID_ORG_ID',
+          message: 'Invalid org_id format'
+        });
+        return;
+      }
+      updates.push(`org_id = $${paramCount++}`);
+      values.push(org_id);
+    }
+
+    if (cycle_id !== undefined) {
+      if (cycle_id !== null && !isValidUUID(cycle_id)) {
+        res.status(400).json({
+          code: 'INVALID_CYCLE_ID',
+          message: 'Invalid cycle_id format'
+        });
+        return;
+      }
+      updates.push(`cycle_id = $${paramCount++}`);
+      values.push(cycle_id);
     }
 
     if (status !== undefined) {

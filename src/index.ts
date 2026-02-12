@@ -8,6 +8,10 @@ import authRoutes from './routes/auth';
 import objectivesRoutes from './routes/objectives';
 import keyResultsRoutes from './routes/keyResults';
 import tasksRoutes from './routes/tasks';
+import organizationsRoutes from './routes/organizations';
+import cyclesRoutes from './routes/cycles';
+import initiativesRoutes from './routes/initiatives';
+import aiRoutes from './routes/ai';
 import { authenticateToken } from './middleware/auth';
 import { errorHandler } from './middleware/errorHandler';
 
@@ -54,9 +58,13 @@ app.get('/api/docs', (req, res) => {
 
 app.use('/auth', authRoutes);
 app.use('/calendar', authenticateToken, calendarRoutes);
+app.use('/organizations', authenticateToken, organizationsRoutes);
+app.use('/cycles', authenticateToken, cyclesRoutes);
 app.use('/objectives', authenticateToken, objectivesRoutes);
 app.use('/key-results', authenticateToken, keyResultsRoutes);
+app.use('/initiatives', authenticateToken, initiativesRoutes);
 app.use('/tasks', authenticateToken, tasksRoutes);
+app.use('/ai', authenticateToken, aiRoutes);
 
 app.use(errorHandler);
 

@@ -1,22 +1,22 @@
-# Calendar Manager & OKR API Documentation
+# AI-Native OKR & Calendar API Documentation (V2)
 
 > **Skill Guide cho AI Agents (OpenClaw, etc.)**
-
-Tài liệu này hướng dẫn cách sử dụng API để quản lý lịch và công việc theo phương pháp OKR.
+> 
+> Hệ thống AI-native execution system: Backend tính toán scores, AI Agent reasoning dựa trên pre-computed data.
 
 ---
 
 ## 🔑 Xác thực (Authentication)
 
-Tất cả API (trừ `/auth/*` và `/health`) yêu cầu Bearer token trong header:
+Tất cả API (trừ `/auth/*` và `/health`) yêu cầu Bearer token:
 
 ```
 Authorization: Bearer <your-token>
 ```
 
-### Lấy Token
+### POST /auth/register
 
-**Bước 1: Đăng ký user mới**
+Đăng ký user mới, tự động nhận token.
 
 ```http
 POST /auth/register
@@ -28,51 +28,143 @@ Content-Type: application/json
 }
 ```
 
-**Response:**
+**Response 201:**
 ```json
 {
-  "user": {
-    "id": "uuid",
-    "name": "Agent Name",
-    "timezone": "Asia/Ho_Chi_Minh",
-    "created_at": "2026-02-11T01:00:00.000Z"
-  },
-  "token": "xK8vN2mP5qR7sT9uV1wX3yZ4aB6cD8eF...",
+  "user": { "id": "uuid", "name": "Agent Name", "timezone": "Asia/Ho_Chi_Minh" },
+  "token": "xK8vN2mP5qR7sT9u...",
   "role": "owner"
 }
 ```
 
-**Lưu `token` này để sử dụng cho tất cả API calls sau!**
+### POST /auth/token
 
----
-
-**Bước 2 (Optional): Tạo thêm token cho user**
+Tạo thêm token cho user.
 
 ```http
 POST /auth/token
 Content-Type: application/json
 
-{
-  "user_id": "uuid",
-  "role": "agent"
-}
+{ "user_id": "uuid", "role": "agent" }
 ```
 
 | Role | Mô tả |
 |------|-------|
-| `owner` | Chủ sở hữu, full quyền |
-| `agent` | AI agent, quyền đọc/ghi |
-| `manager` | Quản lý, quyền đọc/ghi |
+| `owner` | Full quyền |
+| `agent` | AI agent, đọc/ghi |
+| `manager` | Quản lý, đọc/ghi |
+
+---
+
+## 🏢 Organizations API
+
+Quản lý tổ chức và thành viên.
+
+### POST /organizations
+
+```http
+POST /organizations
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{ "name": "My Company", "description": "Optional description" }
+```
+
+| Field | Type | Required | Mô tả |
+|-------|------|----------|-------|
+| `name` | string | ✅ | Tên tổ chức |
+| `description` | string | ❌ | Mô tả |
+
+Người tạo tự động là `owner`. Response 201 trả về organization object.
+
+### GET /organizations
+
+List tổ chức mà user là thành viên. Response kèm `my_role`.
+
+### GET /organizations/:id
+
+Chi tiết tổ chức (phải là member).
+
+### PATCH /organizations/:id
+
+Update name/description (owner/admin only).
+
+### GET /organizations/:id/members
+
+List thành viên. Response:
+```json
+[{ "id": "member_id", "role": "owner", "user_id": "uuid", "user_name": "John" }]
+```
+
+### POST /organizations/:id/members
+
+Thêm thành viên (owner/admin only).
+
+```json
+{ "user_id": "uuid", "role": "member" }
+```
+
+### DELETE /organizations/:id/members/:memberId
+
+Xóa thành viên (owner/admin only, không thể xóa owner).
+
+---
+
+## 🔄 Cycles API
+
+Quản lý chu kỳ OKR (tuần, tháng, quý, năm).
+
+### POST /cycles
+
+```http
+POST /cycles
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "name": "Q1 2026",
+  "type": "quarter",
+  "start_date": "2026-01-01",
+  "end_date": "2026-03-31",
+  "org_id": "uuid"
+}
+```
+
+| Field | Type | Required | Mô tả |
+|-------|------|----------|-------|
+| `name` | string | ✅ | Tên cycle |
+| `type` | enum | ✅ | `week`, `month`, `quarter`, `year` |
+| `start_date` | date | ✅ | Ngày bắt đầu (YYYY-MM-DD) |
+| `end_date` | date | ✅ | Ngày kết thúc (YYYY-MM-DD) |
+| `org_id` | UUID | ❌ | Link tới tổ chức |
+
+### GET /cycles
+
+```http
+GET /cycles?type=quarter&status=active&org_id={uuid}
+```
+
+| Query | Mô tả |
+|-------|-------|
+| `type` | Filter `week`, `month`, `quarter`, `year` |
+| `status` | `active` (default), `closed` |
+| `org_id` | Filter theo org |
+
+### GET /cycles/:id
+
+### PATCH /cycles/:id
+
+Update name, type, start_date, end_date.
+
+### POST /cycles/:id/close
+
+Đóng cycle. Response: `{ "message": "Cycle closed", "cycle": {...} }`
 
 ---
 
 ## 📅 Calendar API
 
-Quản lý lịch làm việc, cuộc họp, thời gian tập trung.
-
 ### POST /calendar/slots
-
-Tạo calendar slot mới.
 
 ```http
 POST /calendar/slots
@@ -94,82 +186,11 @@ Content-Type: application/json
 | `end_time` | ISO 8601 | ✅ | Thời gian kết thúc |
 | `type` | enum | ✅ | `work`, `meeting`, `focus`, `personal` |
 
-**Timestamp formats hỗ trợ:**
-- `2026-02-15T09:00:00Z` (UTC)
-- `2026-02-15T16:00:00+07:00` (với timezone)
-- `2026-02-15T16:00:00` (local time của server)
-
-**Response 201:**
-```json
-{
-  "id": "uuid",
-  "user_id": "uuid",
-  "title": "Team Meeting",
-  "start_time": "2026-02-15T02:00:00.000Z",
-  "end_time": "2026-02-15T03:00:00.000Z",
-  "type": "meeting",
-  "status": "active",
-  "created_at": "...",
-  "updated_at": "..."
-}
-```
-
-**Error 409 (TIME_CONFLICT):**
-```json
-{
-  "code": "TIME_CONFLICT",
-  "message": "This time slot overlaps with an existing active slot",
-  "details": { "conflicting_slot_id": "uuid" }
-}
-```
-
----
-
 ### GET /calendar/slots
 
-Lấy danh sách calendar slots của user.
-
-```http
-GET /calendar/slots
-Authorization: Bearer <token>
-```
-
-**Response 200:**
-```json
-[
-  {
-    "id": "uuid",
-    "title": "Team Meeting",
-    "start_time": "2026-02-15T02:00:00.000Z",
-    "end_time": "2026-02-15T03:00:00.000Z",
-    "start_time_local": "2026-02-15 09:00:00",
-    "end_time_local": "2026-02-15 10:00:00",
-    "type": "meeting",
-    "status": "active"
-  }
-]
-```
-
-**Lưu ý:**
-- Chỉ trả về slots có `status = 'active'`
-- `start_time_local` / `end_time_local` là giờ GMT+7
-
----
+Trả về slots `status = 'active'`, kèm `start_time_local`/`end_time_local` (GMT+7).
 
 ### PUT /calendar/slots/:id
-
-Cập nhật calendar slot.
-
-```http
-PUT /calendar/slots/{id}
-Authorization: Bearer <token>
-Content-Type: application/json
-
-{
-  "title": "Updated Meeting",
-  "status": "cancelled"
-}
-```
 
 | Field | Type | Mô tả |
 |-------|------|-------|
@@ -179,41 +200,21 @@ Content-Type: application/json
 | `type` | enum | `work`, `meeting`, `focus`, `personal` |
 | `status` | enum | `active`, `cancelled`, `done` |
 
----
-
 ### GET /calendar/availability
-
-Kiểm tra lịch rảnh/bận trong khoảng thời gian.
 
 ```http
 GET /calendar/availability?from=2026-02-15T00:00:00Z&to=2026-02-15T23:59:59Z
-Authorization: Bearer <token>
 ```
 
-**Response 200:**
-```json
-{
-  "busy": [
-    { "start": "2026-02-15T09:00:00Z", "end": "2026-02-15T10:00:00Z" }
-  ],
-  "free": [
-    { "start": "2026-02-15T00:00:00Z", "end": "2026-02-15T09:00:00Z" },
-    { "start": "2026-02-15T10:00:00Z", "end": "2026-02-15T23:59:59Z" }
-  ]
-}
-```
+Response: `{ "busy": [...], "free": [...] }`
 
 ---
 
 ## 🎯 OKR API
 
-Quản lý Objectives, Key Results và Tasks theo phương pháp OKR.
-
 ### Objectives
 
 #### POST /objectives
-
-Tạo objective mới.
 
 ```http
 POST /objectives
@@ -221,111 +222,58 @@ Authorization: Bearer <token>
 Content-Type: application/json
 
 {
-  "title": "Hoàn thành MVP Calendar Manager",
-  "description": "Xây dựng hệ thống quản lý lịch hoàn chỉnh",
+  "title": "Increase MRR to $50k",
   "type": "work",
-  "horizon": "month",
-  "success_def": "API hoạt động ổn định trên VPS"
+  "horizon": "quarter",
+  "org_id": "uuid",
+  "cycle_id": "uuid",
+  "description": "...",
+  "success_def": "MRR reaches $50k"
 }
 ```
 
 | Field | Type | Required | Mô tả |
 |-------|------|----------|-------|
-| `title` | string | ✅ | Tiêu đề objective |
-| `description` | string | ❌ | Mô tả chi tiết |
+| `title` | string | ✅ | Tiêu đề |
 | `type` | enum | ✅ | `work`, `personal` |
 | `horizon` | enum | ✅ | `week`, `month`, `quarter`, `year` |
+| `org_id` | UUID | ❌ | Link tới organization |
+| `cycle_id` | UUID | ❌ | Link tới cycle |
+| `description` | string | ❌ | Mô tả |
 | `success_def` | string | ❌ | Định nghĩa thành công |
 
-**Response 201:**
+**Response kèm computed fields:**
 ```json
 {
   "id": "uuid",
-  "user_id": "uuid",
-  "title": "Hoàn thành MVP Calendar Manager",
-  "description": "...",
-  "type": "work",
-  "horizon": "month",
-  "success_def": "...",
+  "progress": 0,
+  "risk_score": 0,
   "status": "active",
-  "created_at": "..."
+  ...
 }
 ```
-
----
 
 #### GET /objectives
 
-Lấy danh sách objectives.
-
 ```http
-GET /objectives
-GET /objectives?type=work
-GET /objectives?horizon=month
-GET /objectives?status=active
-Authorization: Bearer <token>
+GET /objectives?type=work&horizon=quarter&org_id={uuid}&cycle_id={uuid}&status=active
 ```
-
-| Query Param | Mô tả |
-|-------------|-------|
-| `type` | Filter theo `work` hoặc `personal` |
-| `horizon` | Filter theo `week`, `month`, `quarter`, `year` |
-| `status` | Filter theo `active` hoặc `archived` (default: active) |
-
----
 
 #### GET /objectives/:id
 
-Lấy chi tiết một objective.
-
-```http
-GET /objectives/{id}
-Authorization: Bearer <token>
-```
-
----
-
 #### PATCH /objectives/:id
 
-Cập nhật objective.
-
-```http
-PATCH /objectives/{id}
-Authorization: Bearer <token>
-Content-Type: application/json
-
-{
-  "title": "Updated Objective",
-  "status": "archived"
-}
-```
-
----
+Có thể update: title, description, type, horizon, success_def, status, org_id, cycle_id.
 
 #### DELETE /objectives/:id
 
-Archive objective (soft delete).
-
-```http
-DELETE /objectives/{id}
-Authorization: Bearer <token>
-```
-
-**Response:**
-```json
-{
-  "message": "Objective archived",
-  "objective": { ... }
-}
-```
+Soft delete → `status = 'archived'`.
 
 ---
 
 ### Key Results
 
 #### POST /key-results
-
-Tạo key result mới.
 
 ```http
 POST /key-results
@@ -334,81 +282,115 @@ Content-Type: application/json
 
 {
   "objective_id": "uuid",
-  "title": "Deploy API lên VPS thành công",
-  "type": "boolean",
-  "target": "true",
-  "current": "false",
-  "confidence": 0.8
+  "title": "MRR reaches $50k",
+  "type": "metric",
+  "target": "50000",
+  "current": "20000",
+  "confidence": 0.7,
+  "parent_kr_id": "uuid",
+  "importance_weight": 0.8
 }
 ```
 
 | Field | Type | Required | Mô tả |
 |-------|------|----------|-------|
-| `objective_id` | UUID | ✅ | ID của objective |
+| `objective_id` | UUID | ✅ | ID objective |
 | `title` | string | ✅ | Tiêu đề KR |
 | `type` | enum | ✅ | `metric`, `milestone`, `boolean` |
 | `target` | string | ❌ | Giá trị mục tiêu |
 | `current` | string | ❌ | Giá trị hiện tại |
-| `confidence` | float | ❌ | Độ tin cậy (0-1) |
+| `confidence` | float | ❌ | 0–1 |
+| `parent_kr_id` | UUID | ❌ | Parent KR (tạo nested hierarchy) |
+| `importance_weight` | float | ❌ | 0–1 (default: 1) |
 
----
+**KR Hierarchy:**
+- Nếu `parent_kr_id` được cung cấp, `root_kr_id` và `level` được tính tự động
+- KR gốc: `level=0`, `parent_kr_id=null`
+- Child KR: `level=parent.level+1`, `root_kr_id=top-level KR id`
+
+**Response kèm computed fields:**
+```json
+{
+  "id": "uuid",
+  "progress": 0.4,
+  "risk_score": 0.3,
+  "velocity": 0.05,
+  "level": 0,
+  "root_kr_id": null,
+  ...
+}
+```
 
 #### GET /key-results
 
-Lấy danh sách key results.
-
 ```http
-GET /key-results
-GET /key-results?objective_id={uuid}
-Authorization: Bearer <token>
+GET /key-results?objective_id={uuid}&parent_kr_id={uuid}&root_only=true
 ```
 
----
-
-#### GET /key-results/:id
-
-Lấy chi tiết một key result.
-
-```http
-GET /key-results/{id}
-Authorization: Bearer <token>
-```
-
----
+| Query | Mô tả |
+|-------|-------|
+| `objective_id` | Filter theo objective |
+| `parent_kr_id` | Filter children của 1 KR |
+| `root_only` | `true` → chỉ KR gốc (parent_kr_id IS NULL) |
 
 #### PATCH /key-results/:id
 
-Cập nhật key result.
+Có thể update: title, type, target, current, confidence, importance_weight.
+**Khi update `current` → tự động recompute progress, risk, velocity cascade lên objective.**
+
+#### DELETE /key-results/:id
+
+Hard delete.
+
+---
+
+### Initiatives
+
+Initiative = hướng làm, scope lớn, thời gian kéo dài, chứa nhiều tasks.
+
+#### POST /initiatives
 
 ```http
-PATCH /key-results/{id}
+POST /initiatives
 Authorization: Bearer <token>
 Content-Type: application/json
 
 {
-  "current": "75%",
-  "confidence": 0.9
+  "kr_id": "uuid",
+  "title": "Enterprise Sales Campaign",
+  "description": "Focused outreach to enterprise accounts"
 }
 ```
 
----
+| Field | Type | Required | Mô tả |
+|-------|------|----------|-------|
+| `kr_id` | UUID | ✅ | Link tới key result |
+| `title` | string | ✅ | Tiêu đề initiative |
+| `description` | string | ❌ | Mô tả |
 
-#### DELETE /key-results/:id
-
-Xóa key result.
+#### GET /initiatives
 
 ```http
-DELETE /key-results/{id}
-Authorization: Bearer <token>
+GET /initiatives?kr_id={uuid}&status=active
 ```
+
+#### GET /initiatives/:id
+
+#### PATCH /initiatives/:id
+
+Update: title, description, status (`active`, `done`, `cancelled`).
+
+#### DELETE /initiatives/:id
+
+Soft delete → `status = 'cancelled'`.
 
 ---
 
 ### Tasks
 
-#### POST /tasks
+Task = đơn vị nhỏ, thi hành được, có due date rõ ràng.
 
-Tạo task mới.
+#### POST /tasks
 
 ```http
 POST /tasks
@@ -416,117 +398,286 @@ Authorization: Bearer <token>
 Content-Type: application/json
 
 {
-  "title": "Fix bug provider list",
-  "description": "Sửa lỗi hiển thị danh sách providers",
+  "title": "Prepare enterprise pitch deck",
   "category": "work",
   "objective_id": "uuid",
   "kr_id": "uuid",
-  "estimate": 60,
-  "priority": "critical",
-  "impact_note": "Ảnh hưởng đến UX"
+  "initiative_id": "uuid",
+  "priority": "high",
+  "due_date": "2026-02-15T17:00:00+07:00",
+  "blocking": false,
+  "estimate": 120,
+  "impact_note": "Critical for Q1 target"
 }
 ```
 
 | Field | Type | Required | Mô tả |
 |-------|------|----------|-------|
-| `title` | string | ✅ | Tiêu đề task |
-| `description` | string | ❌ | Mô tả chi tiết |
+| `title` | string | ✅ | Tiêu đề |
 | `category` | enum | ✅ | `work`, `personal` |
-| `objective_id` | UUID | ❌ | Liên kết với objective |
-| `kr_id` | UUID | ❌ | Liên kết với key result |
-| `estimate` | integer | ❌ | Thời gian ước tính (phút) |
+| `objective_id` | UUID | ❌ | Link objective |
+| `kr_id` | UUID | ❌ | Link key result |
+| `initiative_id` | UUID | ❌ | Link initiative |
 | `priority` | enum | ❌ | `low`, `medium`, `high`, `critical` (default: medium) |
-| `impact_note` | string | ❌ | Ghi chú về tác động |
+| `due_date` | ISO 8601 | ❌ | Deadline |
+| `blocking` | boolean | ❌ | Task này đang block tiến trình? (default: false) |
+| `estimate` | integer | ❌ | Thời gian ước tính (phút) |
+| `impact_note` | string | ❌ | Ghi chú tác động |
 
-**Lưu ý:**
-- Task `personal` có thể không có `objective_id` và `kr_id`
-- API KHÔNG validate logic OKR (openClaw chịu trách nhiệm)
+**Auto-computed fields:**
+- `root_kr_id` — denormalized từ KR hierarchy
+- `priority_score` — computed từ priority + KR risk + deadline proximity
+- `alignment_depth` — số hops từ task tới objective
 
----
+**Khi task được tạo/update/complete → tự động recompute scores cascade lên KR → Objective → Snapshot.**
 
 #### GET /tasks
 
-Lấy danh sách tasks.
-
 ```http
-GET /tasks
-GET /tasks?category=work
-GET /tasks?status=todo
-GET /tasks?priority=critical
-GET /tasks?objective_id={uuid}
-GET /tasks?kr_id={uuid}
-Authorization: Bearer <token>
+GET /tasks?category=work&status=todo&priority=critical&kr_id={uuid}&initiative_id={uuid}&blocking=true
 ```
 
-| Query Param | Mô tả |
-|-------------|-------|
-| `category` | Filter theo `work` hoặc `personal` |
-| `status` | Filter theo `todo`, `doing`, `done` |
-| `priority` | Filter theo `low`, `medium`, `high`, `critical` |
+**Kết quả sorted theo `priority_score DESC`.**
+
+| Query | Mô tả |
+|-------|-------|
+| `category` | `work`, `personal` |
+| `status` | `todo`, `doing`, `done` |
+| `priority` | `low`, `medium`, `high`, `critical` |
 | `objective_id` | Filter theo objective |
 | `kr_id` | Filter theo key result |
-
----
-
-#### GET /tasks/:id
-
-Lấy chi tiết một task.
-
-```http
-GET /tasks/{id}
-Authorization: Bearer <token>
-```
-
----
+| `initiative_id` | Filter theo initiative |
+| `blocking` | `true` → chỉ blocking tasks |
 
 #### PATCH /tasks/:id
 
-Cập nhật task.
-
-```http
-PATCH /tasks/{id}
-Authorization: Bearer <token>
-Content-Type: application/json
-
-{
-  "status": "doing",
-  "priority": "high"
-}
-```
-
-| Field | Mô tả |
-|-------|-------|
-| `title` | Tiêu đề mới |
-| `description` | Mô tả mới |
-| `category` | `work`, `personal` |
-| `objective_id` | UUID hoặc `null` |
-| `kr_id` | UUID hoặc `null` |
-| `estimate` | Thời gian ước tính |
-| `priority` | `low`, `medium`, `high`, `critical` |
-| `impact_note` | Ghi chú tác động |
-| `status` | `todo`, `doing`, `done` |
-
----
+Có thể update: title, description, category, objective_id, kr_id, initiative_id, estimate, priority, impact_note, status, due_date, blocking.
 
 #### POST /tasks/:id/complete
 
-Đánh dấu task hoàn thành.
+Đánh dấu hoàn thành. Tự set `status='done'`, `completed_at=now()`.
+
+---
+
+## 🤖 AI Agent Endpoints
+
+**Đây là core của hệ thống — endpoints tối ưu cho AI reasoning.**
+
+Backend tính toán TẤT CẢ scores (progress, risk, velocity, priority). AI Agent chỉ đọc kết quả và reasoning.
+
+### GET /ai/snapshot
+
+Snapshot compact, tối ưu token cho LLM.
 
 ```http
-POST /tasks/{id}/complete
+GET /ai/snapshot
+GET /ai/snapshot?cycle_id={uuid}
+Authorization: Bearer <token>
+```
+
+**Response (short keys để tiết kiệm token):**
+```json
+{
+  "ts": "2026-02-12T07:00:00Z",
+  "c": { "id": "uuid", "name": "Q1 2026", "type": "quarter", "elapsed": 0.45 },
+  "o": [
+    { "id": "uuid", "t": "Increase MRR", "p": 0.62, "r": 0.3, "type": "work", "horizon": "quarter" }
+  ],
+  "k": [
+    {
+      "id": "uuid", "oid": "uuid", "t": "MRR $50k",
+      "p": 0.4, "r": 0.7, "v": 0.05,
+      "type": "metric", "target": "50000", "current": "20000",
+      "days_left": 45, "task_count": 8, "done_count": 3
+    }
+  ],
+  "risky": [
+    { "id": "uuid", "t": "MRR $50k", "r": 0.7, "gap": 0.3 }
+  ],
+  "blocked": [
+    { "id": "uuid", "t": "Deploy pricing page" }
+  ],
+  "stats": {
+    "total_tasks": 25, "todo": 10, "doing": 5, "done": 10,
+    "overdue": 2, "unlinked_tasks": 3
+  },
+  "priorities": [
+    { "id": "uuid", "t": "Fix auth bug", "ps": 0.95, "kr_r": 0.7, "status": "todo", "due": "2026-02-13T00:00:00Z", "blocking": true }
+  ]
+}
+```
+
+**Key abbreviations:**
+| Key | Meaning |
+|-----|---------|
+| `t` | title |
+| `p` | progress (0–1) |
+| `r` | risk_score (0–1) |
+| `v` | velocity (progress/week) |
+| `ps` | priority_score |
+| `kr_r` | parent KR risk |
+| `oid` | objective_id |
+| `gap` | 1 - progress |
+
+### GET /ai/snapshot/verbose
+
+Snapshot đầy đủ key names (cho debugging).
+
+```http
+GET /ai/snapshot/verbose?cycle_id={uuid}
+Authorization: Bearer <token>
+```
+
+### POST /ai/snapshot/refresh
+
+Force regenerate snapshot.
+
+```http
+POST /ai/snapshot/refresh
+Authorization: Bearer <token>
+```
+
+### POST /ai/recompute
+
+Recompute TẤT CẢ scores + refresh snapshot (dùng khi nghi ngờ data lệch).
+
+```http
+POST /ai/recompute
+Authorization: Bearer <token>
+```
+
+---
+
+### GET /ai/priorities
+
+Top N tasks theo priority_score (không bao gồm done).
+
+```http
+GET /ai/priorities?limit=10
 Authorization: Bearer <token>
 ```
 
 **Response:**
 ```json
 {
-  "id": "uuid",
-  "title": "Fix bug provider list",
-  "status": "done",
-  "completed_at": "2026-02-11T02:00:00.000Z",
-  ...
+  "priorities": [
+    { "id": "uuid", "t": "Fix auth bug", "ps": 0.95, "status": "todo", "due": "...", "blocking": true, "priority": "critical", "category": "work", "kr_id": "uuid", "kr_r": 0.7, "kr_title": "MRR $50k" }
+  ]
 }
 ```
+
+### GET /ai/risks
+
+KRs sorted theo risk_score DESC.
+
+```http
+GET /ai/risks?threshold=0.5
+Authorization: Bearer <token>
+```
+
+| Query | Mô tả |
+|-------|-------|
+| `threshold` | Minimum risk score (default: 0) |
+
+### GET /ai/alignment-gaps
+
+Phát hiện orphan data: Objectives không có KR, KR không có Task, Tasks không link OKR.
+
+```http
+GET /ai/alignment-gaps
+Authorization: Bearer <token>
+```
+
+**Response:**
+```json
+{
+  "objectives_without_krs": [{ "id": "uuid", "title": "..." }],
+  "krs_without_tasks": [{ "id": "uuid", "title": "...", "objective_id": "uuid", "o_title": "..." }],
+  "unlinked_tasks": [{ "id": "uuid", "title": "...", "status": "todo", "priority": "medium" }]
+}
+```
+
+### GET /ai/workload
+
+Phân bổ công việc theo status.
+
+```http
+GET /ai/workload
+Authorization: Bearer <token>
+```
+
+**Response:**
+```json
+{
+  "by_status": [
+    { "status": "doing", "count": 5, "blocking_count": 1, "overdue_count": 0, "avg_priority_score": 0.65 },
+    { "status": "todo", "count": 10, "blocking_count": 0, "overdue_count": 2, "avg_priority_score": 0.45 }
+  ],
+  "by_category": [
+    { "category": "work", "status": "doing", "count": 4 },
+    { "category": "personal", "status": "todo", "count": 3 }
+  ]
+}
+```
+
+### GET /ai/velocity-report
+
+KR velocity trends — tốc độ tiến trình.
+
+```http
+GET /ai/velocity-report
+Authorization: Bearer <token>
+```
+
+**Response:**
+```json
+{
+  "all": [{ "id": "uuid", "t": "MRR $50k", "p": 0.4, "r": 0.7, "v": 0.03, ... }],
+  "slow": [...],
+  "on_track": [...],
+  "fast": [...]
+}
+```
+
+| Category | Velocity |
+|----------|----------|
+| `slow` | < 0.05/week |
+| `on_track` | 0.05–0.15/week |
+| `fast` | > 0.15/week |
+
+---
+
+## 📊 Scoring Engine
+
+Backend tự động tính các scores khi data thay đổi (on-write).
+
+### Computed Fields
+
+**Key Results:**
+| Field | Formula |
+|-------|---------|
+| `progress` | metric: current/target; boolean: 0 or 1; milestone: done_tasks/total_tasks; has children: weighted avg |
+| `risk_score` | `(1 - progress) × (elapsed_time / total_time)` |
+| `velocity` | `progress / weeks_elapsed` |
+
+**Objectives:**
+| Field | Formula |
+|-------|---------|
+| `progress` | Weighted average of root KRs' progress |
+| `risk_score` | Max of KRs' risk_score |
+
+**Tasks:**
+| Field | Formula |
+|-------|---------|
+| `priority_score` | `priority_weight + kr_risk_bonus + deadline_bonus` |
+| `alignment_depth` | Hops from task to objective through KR hierarchy |
+
+### Cascade Triggers
+
+| Event | Cascades |
+|-------|----------|
+| Task create/update/complete | → KR progress → Objective progress → Risk → Snapshot |
+| KR create/update | → Parent KR → Objective → Risk → Velocity → Snapshot |
 
 ---
 
@@ -534,152 +685,98 @@ Authorization: Bearer <token>
 
 ### GET /health
 
-Kiểm tra server status.
-
-```http
-GET /health
-```
-
-**Response:**
 ```json
-{
-  "status": "ok",
-  "timestamp": "2026-02-11T01:00:00.000Z"
-}
+{ "status": "ok", "timestamp": "2026-02-12T07:00:00Z" }
 ```
-
----
 
 ### GET /api/server-info
 
-Lấy thông tin server (IP, port).
-
-```http
-GET /api/server-info
-```
-
-**Response:**
 ```json
-{
-  "ip": "192.168.1.100",
-  "port": 3000
-}
+{ "ip": "180.93.237.207", "port": 3000 }
 ```
+
+### GET /api/docs
+
+Trả về file API documentation (markdown).
 
 ---
 
 ## ❌ Error Codes
 
-| Code | HTTP Status | Mô tả |
-|------|-------------|-------|
+| Code | HTTP | Mô tả |
+|------|------|-------|
 | `MISSING_TOKEN` | 401 | Thiếu Authorization header |
 | `INVALID_TOKEN` | 401 | Token không hợp lệ |
 | `AUTH_ERROR` | 500 | Lỗi xác thực nội bộ |
 | `MISSING_FIELDS` | 400 | Thiếu trường bắt buộc |
 | `INVALID_TIMESTAMP` | 400 | Timestamp không đúng ISO 8601 |
 | `INVALID_TIME_RANGE` | 400 | start_time >= end_time |
+| `INVALID_DATE` | 400 | Date format không hợp lệ |
+| `INVALID_DATE_RANGE` | 400 | start_date >= end_date |
 | `INVALID_TYPE` | 400 | Type không hợp lệ |
 | `INVALID_STATUS` | 400 | Status không hợp lệ |
 | `INVALID_CATEGORY` | 400 | Category không hợp lệ |
 | `INVALID_PRIORITY` | 400 | Priority không hợp lệ |
 | `INVALID_HORIZON` | 400 | Horizon không hợp lệ |
 | `INVALID_ID` | 400 | UUID format không hợp lệ |
-| `INVALID_CONFIDENCE` | 400 | Confidence không trong khoảng 0-1 |
+| `INVALID_CONFIDENCE` | 400 | Confidence không trong 0–1 |
+| `INVALID_IMPORTANCE_WEIGHT` | 400 | Weight không trong 0–1 |
+| `INVALID_ROLE` | 400 | Role không hợp lệ |
 | `TIME_CONFLICT` | 409 | Trùng lịch với slot khác |
+| `MEMBER_EXISTS` | 409 | User đã là thành viên |
 | `SLOT_NOT_FOUND` | 404 | Không tìm thấy calendar slot |
+| `CYCLE_NOT_FOUND` | 404 | Không tìm thấy cycle |
+| `ORG_NOT_FOUND` | 404 | Không tìm thấy organization |
 | `OBJECTIVE_NOT_FOUND` | 404 | Không tìm thấy objective |
 | `KEY_RESULT_NOT_FOUND` | 404 | Không tìm thấy key result |
+| `PARENT_KR_NOT_FOUND` | 404 | Không tìm thấy parent KR |
+| `INITIATIVE_NOT_FOUND` | 404 | Không tìm thấy initiative |
 | `TASK_NOT_FOUND` | 404 | Không tìm thấy task |
 | `USER_NOT_FOUND` | 404 | Không tìm thấy user |
+| `MEMBER_NOT_FOUND` | 404 | Không tìm thấy member |
 | `FORBIDDEN` | 403 | Không có quyền truy cập |
-| `NO_UPDATES` | 400 | Không có trường nào để update |
+| `CANNOT_REMOVE_OWNER` | 403 | Không thể xóa owner |
+| `NO_UPDATES` | 400 | Không có trường để update |
 | `INTERNAL_ERROR` | 500 | Lỗi server nội bộ |
 
 ---
 
-## 🤖 Hướng dẫn cho AI Agent
+## 🤖 AI Agent Workflow
 
-### Workflow cơ bản
+### Workflow đề xuất cho AI Agent
 
 ```
-1. Đăng ký user (nếu chưa có token)
-   POST /auth/register
-
-2. Lưu token để sử dụng
-
-3. Tạo Objective
-   POST /objectives
-
-4. Tạo Key Results cho Objective
-   POST /key-results
-
-5. Tạo Tasks cho Key Results
-   POST /tasks
-
-6. Cập nhật tiến độ
-   PATCH /key-results/:id
-   PATCH /tasks/:id
-
-7. Hoàn thành task
-   POST /tasks/:id/complete
+1. POST /auth/register              → Lấy token
+2. POST /organizations               → Tạo org
+3. POST /cycles                      → Tạo cycle (Q1 2026)
+4. POST /objectives (org_id, cycle_id) → Tạo objectives
+5. POST /key-results (parent_kr_id)  → Tạo KR hierarchy
+6. POST /initiatives                 → Tạo initiatives
+7. POST /tasks (kr_id, initiative_id, due_date) → Tạo tasks
+8. GET  /ai/snapshot                 → Đọc snapshot để reasoning
+9. GET  /ai/priorities               → Xem task nên làm trước
+10. GET /ai/risks                    → Xem KR nào rủi ro
+11. GET /ai/alignment-gaps           → Phát hiện orphan data
+12. PATCH /tasks/:id, POST /tasks/:id/complete → Cập nhật tiến độ
+13. GET /ai/snapshot                 → Re-read updated snapshot
 ```
 
-### Ví dụ workflow hoàn chỉnh
+### Nguyên tắc
 
-```bash
-# 1. Đăng ký
-TOKEN=$(curl -s -X POST http://180.93.237.207:3000/auth/register \
-  -H "Content-Type: application/json" \
-  -d '{"name": "OpenClaw Agent", "timezone": "Asia/Ho_Chi_Minh"}' \
-  | jq -r '.token')
-
-# 2. Tạo Objective
-OBJ_ID=$(curl -s -X POST http://180.93.237.207:3000/objectives \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"title": "Ship MVP", "type": "work", "horizon": "week"}' \
-  | jq -r '.id')
-
-# 3. Tạo Key Result
-KR_ID=$(curl -s -X POST http://180.93.237.207:3000/key-results \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d "{\"objective_id\": \"$OBJ_ID\", \"title\": \"API deployed\", \"type\": \"boolean\"}" \
-  | jq -r '.id')
-
-# 4. Tạo Task
-TASK_ID=$(curl -s -X POST http://180.93.237.207:3000/tasks \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d "{\"title\": \"Fix auth bug\", \"category\": \"work\", \"objective_id\": \"$OBJ_ID\", \"kr_id\": \"$KR_ID\", \"priority\": \"critical\"}" \
-  | jq -r '.id')
-
-# 5. Hoàn thành Task
-curl -X POST "http://180.93.237.207:3000/tasks/$TASK_ID/complete" \
-  -H "Authorization: Bearer $TOKEN"
-
-# 6. Cập nhật KR
-curl -X PATCH "http://180.93.237.207:3000/key-results/$KR_ID" \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"current": "true", "confidence": 1.0}'
-```
-
-### Nguyên tắc quan trọng
-
-1. **API chỉ lưu trữ** - Không có AI, không brainstorm, không suy luận
-2. **Gửi dữ liệu hoàn chỉnh** - API không hỏi lại, không sửa, không đoán
-3. **Logic OKR do agent xử lý** - API không validate task có đúng KR không
-4. **Soft delete** - Objectives được archive, không hard delete
-5. **Token-based auth** - Mỗi request cần Bearer token
+1. **Backend tính toán, AI reasoning** — Không cần AI tự tính score
+2. **Đọc snapshot trước khi reasoning** — Snapshot luôn up-to-date
+3. **Dùng short keys** — Tiết kiệm token khi đọc snapshot
+4. **Dùng `/ai/snapshot/verbose` để debug** — Khi cần đọc full key names
+5. **Gọi `/ai/recompute` nếu nghi ngờ** — Force recompute tất cả scores
 
 ---
 
 ## 📡 Server Info
 
 - **Base URL:** `http://180.93.237.207:3000`
-- **Web Interface:** `http://180.93.237.207:3000` (mở bằng browser)
+- **API Docs:** `http://180.93.237.207:3000/api/docs`
+- **Web Interface:** `http://180.93.237.207:3000`
 
 ---
 
-*Tài liệu này được tạo cho AI agents sử dụng Calendar Manager & OKR API.*
+*V2 — AI-Native OKR Execution System. Backend tính toán, AI reasoning.*

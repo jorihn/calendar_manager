@@ -1,6 +1,7 @@
 import { Router, Response } from 'express';
 import pool from '../db/pool';
 import { AuthenticatedRequest } from '../types';
+import { cascadeFromKR } from '../services/scoring';
 
 const router = Router();
 
@@ -15,7 +16,7 @@ const isValidUUID = (uuid: string): boolean => {
 
 router.post('/', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
-    const { objective_id, title, type, target, current, confidence } = req.body;
+    const { objective_id, title, type, target, current, confidence, parent_kr_id, importance_weight } = req.body;
     const userId = req.userId;
 
     if (!objective_id || !title || !type) {
@@ -50,14 +51,47 @@ router.post('/', async (req: AuthenticatedRequest, res: Response): Promise<void>
       return;
     }
 
+    if (parent_kr_id !== undefined && parent_kr_id !== null && !isValidUUID(parent_kr_id)) {
+      res.status(400).json({
+        code: 'INVALID_PARENT_KR_ID',
+        message: 'Invalid parent_kr_id format'
+      });
+      return;
+    }
+
+    // Compute hierarchy fields
+    let rootKrId: string | null = null;
+    let level = 0;
+
+    if (parent_kr_id) {
+      const parentKR = await pool.query(
+        'SELECT id, root_kr_id, level FROM key_results WHERE id = $1 AND user_id = $2',
+        [parent_kr_id, userId]
+      );
+
+      if (parentKR.rows.length === 0) {
+        res.status(404).json({
+          code: 'PARENT_KR_NOT_FOUND',
+          message: 'Parent key result not found'
+        });
+        return;
+      }
+
+      rootKrId = parentKR.rows[0].root_kr_id || parentKR.rows[0].id;
+      level = parentKR.rows[0].level + 1;
+    }
+
     const result = await pool.query(
-      `INSERT INTO key_results (user_id, objective_id, title, type, target, current, confidence)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
+      `INSERT INTO key_results (user_id, objective_id, title, type, target, current, confidence, parent_kr_id, root_kr_id, level, importance_weight)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
        RETURNING *`,
-      [userId, objective_id, title, type, target || null, current || null, confidence || null]
+      [userId, objective_id, title, type, target || null, current || null, confidence || null, parent_kr_id || null, rootKrId, level, importance_weight || 1]
     );
 
-    res.status(201).json(result.rows[0]);
+    const created = result.rows[0];
+    cascadeFromKR(created.id).catch(err => console.error('Scoring error (KR create):', err));
+
+    res.status(201).json(created);
   } catch (error) {
     console.error('Error creating key result:', error);
     res.status(500).json({
@@ -74,10 +108,20 @@ router.get('/', async (req: AuthenticatedRequest, res: Response): Promise<void> 
 
     let query = 'SELECT * FROM key_results WHERE user_id = $1';
     const params: any[] = [userId];
+    let paramCount = 2;
 
     if (objective_id) {
-      query += ' AND objective_id = $2';
+      query += ` AND objective_id = $${paramCount++}`;
       params.push(objective_id);
+    }
+
+    if (req.query.parent_kr_id) {
+      query += ` AND parent_kr_id = $${paramCount++}`;
+      params.push(req.query.parent_kr_id);
+    }
+
+    if (req.query.root_only === 'true') {
+      query += ' AND parent_kr_id IS NULL';
     }
 
     query += ' ORDER BY created_at DESC';
@@ -132,7 +176,7 @@ router.get('/:id', async (req: AuthenticatedRequest, res: Response): Promise<voi
 router.patch('/:id', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
-    const { title, type, target, current, confidence } = req.body;
+    const { title, type, target, current, confidence, importance_weight } = req.body;
     const userId = req.userId;
 
     if (!isValidUUID(id)) {
@@ -199,6 +243,18 @@ router.patch('/:id', async (req: AuthenticatedRequest, res: Response): Promise<v
       values.push(confidence);
     }
 
+    if (importance_weight !== undefined) {
+      if (importance_weight < 0 || importance_weight > 1) {
+        res.status(400).json({
+          code: 'INVALID_IMPORTANCE_WEIGHT',
+          message: 'importance_weight must be between 0 and 1'
+        });
+        return;
+      }
+      updates.push(`importance_weight = $${paramCount++}`);
+      values.push(importance_weight);
+    }
+
     if (updates.length === 0) {
       res.status(400).json({
         code: 'NO_UPDATES',
@@ -218,7 +274,10 @@ router.patch('/:id', async (req: AuthenticatedRequest, res: Response): Promise<v
       values
     );
 
-    res.json(result.rows[0]);
+    const updated = result.rows[0];
+    cascadeFromKR(updated.id).catch(err => console.error('Scoring error (KR update):', err));
+
+    res.json(updated);
   } catch (error) {
     console.error('Error updating key result:', error);
     res.status(500).json({

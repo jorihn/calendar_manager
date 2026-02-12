@@ -1,6 +1,7 @@
 import { Router, Response } from 'express';
 import pool from '../db/pool';
 import { AuthenticatedRequest } from '../types';
+import { cascadeFromTask } from '../services/scoring';
 
 const router = Router();
 
@@ -23,7 +24,7 @@ const isValidUUID = (uuid: string): boolean => {
 
 router.post('/', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
-    const { title, description, category, objective_id, kr_id, estimate, priority, impact_note } = req.body;
+    const { title, description, category, objective_id, kr_id, initiative_id, estimate, priority, impact_note, due_date, blocking } = req.body;
     const userId = req.userId;
 
     if (!title || !category) {
@@ -66,9 +67,29 @@ router.post('/', async (req: AuthenticatedRequest, res: Response): Promise<void>
       return;
     }
 
+    if (initiative_id && !isValidUUID(initiative_id)) {
+      res.status(400).json({
+        code: 'INVALID_INITIATIVE_ID',
+        message: 'Invalid initiative_id format'
+      });
+      return;
+    }
+
+    // Compute root_kr_id from kr_id hierarchy
+    let rootKrId: string | null = null;
+    if (kr_id) {
+      const krResult = await pool.query(
+        'SELECT root_kr_id, id FROM key_results WHERE id = $1',
+        [kr_id]
+      );
+      if (krResult.rows.length > 0) {
+        rootKrId = krResult.rows[0].root_kr_id || krResult.rows[0].id;
+      }
+    }
+
     const result = await pool.query(
-      `INSERT INTO tasks (user_id, title, description, category, objective_id, kr_id, estimate, priority, impact_note)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      `INSERT INTO tasks (user_id, title, description, category, objective_id, kr_id, initiative_id, estimate, priority, impact_note, due_date, root_kr_id, blocking)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
        RETURNING *`,
       [
         userId,
@@ -77,13 +98,21 @@ router.post('/', async (req: AuthenticatedRequest, res: Response): Promise<void>
         category,
         objective_id || null,
         kr_id || null,
+        initiative_id || null,
         estimate || null,
         priority || 'medium',
-        impact_note || null
+        impact_note || null,
+        due_date || null,
+        rootKrId,
+        blocking || false
       ]
     );
 
-    res.status(201).json(result.rows[0]);
+    const created = result.rows[0];
+    // Trigger scoring cascade
+    cascadeFromTask(created.id).catch(err => console.error('Scoring error (task create):', err));
+
+    res.status(201).json(created);
   } catch (error) {
     console.error('Error creating task:', error);
     res.status(500).json({
@@ -96,7 +125,7 @@ router.post('/', async (req: AuthenticatedRequest, res: Response): Promise<void>
 router.get('/', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const userId = req.userId;
-    const { category, status, priority, objective_id, kr_id } = req.query;
+    const { category, status, priority, objective_id, kr_id, initiative_id, blocking } = req.query;
 
     let query = 'SELECT * FROM tasks WHERE user_id = $1';
     const params: any[] = [userId];
@@ -127,7 +156,16 @@ router.get('/', async (req: AuthenticatedRequest, res: Response): Promise<void> 
       params.push(kr_id);
     }
 
-    query += ' ORDER BY created_at DESC';
+    if (initiative_id) {
+      query += ` AND initiative_id = $${paramCount++}`;
+      params.push(initiative_id);
+    }
+
+    if (blocking === 'true') {
+      query += ' AND blocking = true';
+    }
+
+    query += ' ORDER BY priority_score DESC, created_at DESC';
 
     const result = await pool.query(query, params);
     res.json(result.rows);
@@ -179,7 +217,7 @@ router.get('/:id', async (req: AuthenticatedRequest, res: Response): Promise<voi
 router.patch('/:id', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
-    const { title, description, category, objective_id, kr_id, estimate, priority, impact_note, status } = req.body;
+    const { title, description, category, objective_id, kr_id, initiative_id, estimate, priority, impact_note, status, due_date, blocking } = req.body;
     const userId = req.userId;
 
     if (!isValidUUID(id)) {
@@ -275,6 +313,28 @@ router.patch('/:id', async (req: AuthenticatedRequest, res: Response): Promise<v
       values.push(impact_note);
     }
 
+    if (initiative_id !== undefined) {
+      if (initiative_id !== null && !isValidUUID(initiative_id)) {
+        res.status(400).json({
+          code: 'INVALID_INITIATIVE_ID',
+          message: 'Invalid initiative_id format'
+        });
+        return;
+      }
+      updates.push(`initiative_id = $${paramCount++}`);
+      values.push(initiative_id);
+    }
+
+    if (due_date !== undefined) {
+      updates.push(`due_date = $${paramCount++}`);
+      values.push(due_date);
+    }
+
+    if (blocking !== undefined) {
+      updates.push(`blocking = $${paramCount++}`);
+      values.push(blocking);
+    }
+
     if (status !== undefined) {
       if (!isValidTaskStatus(status)) {
         res.status(400).json({
@@ -310,7 +370,11 @@ router.patch('/:id', async (req: AuthenticatedRequest, res: Response): Promise<v
       values
     );
 
-    res.json(result.rows[0]);
+    const updated = result.rows[0];
+    // Trigger scoring cascade
+    cascadeFromTask(updated.id).catch(err => console.error('Scoring error (task update):', err));
+
+    res.json(updated);
   } catch (error) {
     console.error('Error updating task:', error);
     res.status(500).json({
@@ -349,7 +413,11 @@ router.post('/:id/complete', async (req: AuthenticatedRequest, res: Response): P
       return;
     }
 
-    res.json(result.rows[0]);
+    const completed = result.rows[0];
+    // Trigger scoring cascade
+    cascadeFromTask(completed.id).catch(err => console.error('Scoring error (task complete):', err));
+
+    res.json(completed);
   } catch (error) {
     console.error('Error completing task:', error);
     res.status(500).json({
