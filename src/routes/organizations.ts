@@ -1,8 +1,13 @@
 import { Router, Response } from 'express';
+import crypto from 'crypto';
 import pool from '../db/pool';
 import { AuthenticatedRequest } from '../types';
 
 const router = Router();
+
+const generateInviteCode = (): string => {
+  return crypto.randomBytes(6).toString('base64url').slice(0, 8);
+};
 
 const isValidUUID = (uuid: string): boolean => {
   const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -60,6 +65,65 @@ router.post('/', async (req: AuthenticatedRequest, res: Response): Promise<void>
     res.status(500).json({
       code: 'INTERNAL_ERROR',
       message: 'Failed to create organization'
+    });
+  }
+});
+
+// Join organization by invite code (must be before /:id routes)
+router.post('/join', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    const { code } = req.body;
+    const userId = req.userId;
+
+    if (!code) {
+      res.status(400).json({
+        code: 'MISSING_FIELDS',
+        message: 'Required fields: code'
+      });
+      return;
+    }
+
+    const org = await pool.query(
+      'SELECT id, name FROM organizations WHERE invite_code = $1',
+      [code]
+    );
+
+    if (org.rows.length === 0) {
+      res.status(404).json({
+        code: 'INVALID_INVITE_CODE',
+        message: 'Invalid or expired invite code'
+      });
+      return;
+    }
+
+    const orgId = org.rows[0].id;
+
+    const result = await pool.query(
+      `INSERT INTO org_members (org_id, user_id, role)
+       VALUES ($1, $2, 'member')
+       RETURNING *`,
+      [orgId, userId]
+    );
+
+    res.status(201).json({
+      message: 'Joined organization',
+      org_id: orgId,
+      org_name: org.rows[0].name,
+      role: 'member',
+      membership: result.rows[0]
+    });
+  } catch (error: any) {
+    if (error.code === '23505') {
+      res.status(409).json({
+        code: 'MEMBER_EXISTS',
+        message: 'You are already a member of this organization'
+      });
+      return;
+    }
+    console.error('Error joining organization:', error);
+    res.status(500).json({
+      code: 'INTERNAL_ERROR',
+      message: 'Failed to join organization'
     });
   }
 });
@@ -336,6 +400,62 @@ router.post('/:id/members', async (req: AuthenticatedRequest, res: Response): Pr
     res.status(500).json({
       code: 'INTERNAL_ERROR',
       message: 'Failed to add member'
+    });
+  }
+});
+
+// Generate invite code for organization
+router.post('/:id/invite', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const userId = req.userId;
+
+    if (!isValidUUID(id)) {
+      res.status(400).json({
+        code: 'INVALID_ID',
+        message: 'Invalid organization ID format'
+      });
+      return;
+    }
+
+    const memberCheck = await pool.query(
+      'SELECT role FROM org_members WHERE org_id = $1 AND user_id = $2',
+      [id, userId]
+    );
+
+    if (memberCheck.rows.length === 0 || !['owner', 'admin'].includes(memberCheck.rows[0].role)) {
+      res.status(403).json({
+        code: 'FORBIDDEN',
+        message: 'Only owner or admin can generate invite codes'
+      });
+      return;
+    }
+
+    const code = generateInviteCode();
+
+    const result = await pool.query(
+      `UPDATE organizations SET invite_code = $1 WHERE id = $2 RETURNING id, name, invite_code`,
+      [code, id]
+    );
+
+    if (result.rows.length === 0) {
+      res.status(404).json({
+        code: 'ORG_NOT_FOUND',
+        message: 'Organization not found'
+      });
+      return;
+    }
+
+    res.json({
+      message: 'Invite code generated',
+      invite_code: result.rows[0].invite_code,
+      org_name: result.rows[0].name
+    });
+  } catch (error) {
+    console.error('Error generating invite code:', error);
+    res.status(500).json({
+      code: 'INTERNAL_ERROR',
+      message: 'Failed to generate invite code'
     });
   }
 });

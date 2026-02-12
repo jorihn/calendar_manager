@@ -27,6 +27,10 @@ CREATE TABLE IF NOT EXISTS org_members (
 CREATE INDEX IF NOT EXISTS idx_org_members_org_id ON org_members(org_id);
 CREATE INDEX IF NOT EXISTS idx_org_members_user_id ON org_members(user_id);
 
+-- Invite code for organizations (added later, safe to re-run)
+ALTER TABLE organizations ADD COLUMN IF NOT EXISTS invite_code VARCHAR(20) UNIQUE;
+CREATE INDEX IF NOT EXISTS idx_organizations_invite_code ON organizations(invite_code) WHERE invite_code IS NOT NULL;
+
 -- ============================================================
 -- 2. Cycles
 -- ============================================================

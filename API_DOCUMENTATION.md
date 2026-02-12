@@ -104,6 +104,51 @@ Thêm thành viên (owner/admin only).
 { "user_id": "uuid", "role": "member" }
 ```
 
+### POST /organizations/:id/invite
+
+Tạo invite code cho organization (owner/admin only). Mỗi lần gọi sẽ tạo code mới, thay thế code cũ.
+
+```http
+POST /organizations/{id}/invite
+Authorization: Bearer <token>
+```
+
+**Response 200:**
+```json
+{
+  "message": "Invite code generated",
+  "invite_code": "aB3xK9mN",
+  "org_name": "My Company"
+}
+```
+
+### POST /organizations/join
+
+Agent/user tự join organization bằng invite code.
+
+```http
+POST /organizations/join
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{ "code": "aB3xK9mN" }
+```
+
+**Response 201:**
+```json
+{
+  "message": "Joined organization",
+  "org_id": "uuid",
+  "org_name": "My Company",
+  "role": "member"
+}
+```
+
+| Error | Mô tả |
+|-------|--------|
+| `INVALID_INVITE_CODE` (404) | Code không tồn tại hoặc hết hạn |
+| `MEMBER_EXISTS` (409) | User đã là thành viên |
+
 ### DELETE /organizations/:id/members/:memberId
 
 Xóa thành viên (owner/admin only, không thể xóa owner).
@@ -722,6 +767,7 @@ Trả về file API documentation (markdown).
 | `INVALID_CONFIDENCE` | 400 | Confidence không trong 0–1 |
 | `INVALID_IMPORTANCE_WEIGHT` | 400 | Weight không trong 0–1 |
 | `INVALID_ROLE` | 400 | Role không hợp lệ |
+| `INVALID_INVITE_CODE` | 404 | Invite code không tồn tại |
 | `TIME_CONFLICT` | 409 | Trùng lịch với slot khác |
 | `MEMBER_EXISTS` | 409 | User đã là thành viên |
 | `SLOT_NOT_FOUND` | 404 | Không tìm thấy calendar slot |
