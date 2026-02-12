@@ -177,7 +177,7 @@ Content-Type: application/json
 | `start_time` | ISO 8601 | Thời gian bắt đầu mới |
 | `end_time` | ISO 8601 | Thời gian kết thúc mới |
 | `type` | enum | `work`, `meeting`, `focus`, `personal` |
-| `status` | enum | `active`, `cancelled` |
+| `status` | enum | `active`, `cancelled`, `done` |
 
 ---
 

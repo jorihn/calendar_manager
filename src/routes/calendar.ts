@@ -162,10 +162,10 @@ router.put('/slots/:id', async (req: AuthenticatedRequest, res: Response): Promi
     }
 
     if (status !== undefined) {
-      if (status !== 'active' && status !== 'cancelled') {
+      if (!['active', 'cancelled', 'done'].includes(status)) {
         res.status(400).json({
           code: 'INVALID_STATUS',
-          message: 'status must be either active or cancelled'
+          message: 'status must be one of: active, cancelled, done'
         });
         return;
       }
