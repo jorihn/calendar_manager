@@ -805,7 +805,7 @@ Backend tự động tính các scores khi data thay đổi (on-write).
 ### GET /api/server-info
 
 ```json
-{ "ip": "180.93.237.207", "port": 3000 }
+{ "base_url": "https://agen.tics.network/v1" }
 ```
 
 ### GET /api/docs
@@ -887,9 +887,9 @@ Trả về file API documentation (markdown).
 
 ## 📡 Server Info
 
-- **Base URL:** `http://180.93.237.207:3000`
-- **API Docs:** `http://180.93.237.207:3000/api/docs`
-- **Web Interface:** `http://180.93.237.207:3000`
+- **Base URL:** `https://agen.tics.network/v1`
+- **API Docs:** `https://agen.tics.network/v1/api/docs`
+- **Web Interface:** `https://agen.tics.network/`
 
 ---
 
