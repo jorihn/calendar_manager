@@ -461,7 +461,9 @@ Content-Type: application/json
   "due_date": "2026-02-15T17:00:00+07:00",
   "blocking": false,
   "estimate": 120,
-  "impact_note": "Critical for Q1 target"
+  "impact_note": "Critical for Q1 target",
+  "dod": "Deck reviewed by team lead, all slides finalized",
+  "outcome": "Enterprise clients receive a compelling pitch deck"
 }
 ```
 
@@ -478,6 +480,8 @@ Content-Type: application/json
 | `blocking` | boolean | ❌ | Task này đang block tiến trình? (default: false) |
 | `estimate` | integer | ❌ | Thời gian ước tính (phút) |
 | `impact_note` | string | ❌ | Ghi chú tác động |
+| `dod` | string | ❌ | Definition of Done — tiêu chí hoàn thành task |
+| `outcome` | string | ❌ | Kết quả mong muốn khi task hoàn thành |
 
 **Auto-computed fields:**
 - `root_kr_id` — denormalized từ KR hierarchy
@@ -539,11 +543,47 @@ Default: chỉ tasks chưa done. Dùng `?status=done` để xem completed.
 
 #### PATCH /tasks/:id
 
-Có thể update: title, description, category, objective_id, kr_id, initiative_id, estimate, priority, impact_note, status, due_date, blocking, **assignee_id**.
+Có thể update: title, description, category, objective_id, kr_id, initiative_id, estimate, priority, impact_note, status, due_date, blocking, **assignee_id**, **dod**, **outcome**, **outcome_score**, **dod_review_status**, **dod_review_note**.
+
+| Field | Type | Mô tả |
+|-------|------|-------|
+| `outcome_score` | float | 0–1, AI-scored quality of outcome |
+| `dod_review_status` | enum | `passed`, `needs_revision`, `partial` |
+| `dod_review_note` | string | Ghi chú review DoD |
+| `dod_confirmed` | boolean | Bắt buộc khi set `status: "done"` nếu task có `dod` |
+
+> **⚠️ DoD Gate:** Khi PATCH `status` → `done`, nếu task có field `dod`, server sẽ trả `DOD_NOT_CONFIRMED` (400) trừ khi gửi kèm `dod_confirmed: true`.
 
 #### POST /tasks/:id/complete
 
 Đánh dấu hoàn thành. Tự set `status='done'`, `completed_at=now()`.
+
+```http
+POST /tasks/{id}/complete
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "dod_confirmed": true,
+  "outcome_score": 0.85
+}
+```
+
+| Field | Type | Required | Mô tả |
+|-------|------|----------|-------|
+| `dod_confirmed` | boolean | Conditional | Bắt buộc nếu task có `dod` |
+| `outcome_score` | float | ❌ | 0–1, chất lượng outcome (AI Agent scoring) |
+
+> **⚠️ DoD Gate:** Nếu task có `dod` mà không gửi `dod_confirmed: true`, server trả:
+> ```json
+> {
+>   "code": "DOD_NOT_CONFIRMED",
+>   "message": "Task has Definition of Done criteria...",
+>   "dod": "Unit tests pass, code reviewed, deployed to staging"
+> }
+> ```
+
+> **📊 Outcome Score:** Khi task complete với `outcome_score`, score này ảnh hưởng đến KR progress cho milestone KRs. Task có `outcome_score: 0.5` chỉ contribute 50% thay vì 100%.
 
 ---
 

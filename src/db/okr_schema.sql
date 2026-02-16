@@ -147,6 +147,11 @@ CREATE TABLE IF NOT EXISTS tasks (
     alignment_depth INTEGER NOT NULL DEFAULT 0,
     assignee_id UUID REFERENCES users(id) ON DELETE SET NULL,
     blocking BOOLEAN NOT NULL DEFAULT false,
+    dod TEXT,
+    outcome TEXT,
+    outcome_score DECIMAL(3,2) CHECK (outcome_score >= 0 AND outcome_score <= 1),
+    dod_review_status VARCHAR(20) CHECK (dod_review_status IN ('passed', 'needs_revision', 'partial')),
+    dod_review_note TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     completed_at TIMESTAMP WITH TIME ZONE
 );

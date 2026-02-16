@@ -64,17 +64,18 @@ export async function computeKRProgress(krId: string): Promise<number> {
         break;
       }
       case 'milestone': {
-        // Count tasks linked to this KR
+        // Count tasks linked to this KR, factoring in outcome_score for quality-weighted progress
         const taskCounts = await pool.query(
           `SELECT 
+            COUNT(*) as total_count,
             COUNT(*) FILTER (WHERE status = 'done') as done_count,
-            COUNT(*) as total_count
+            COALESCE(SUM(CASE WHEN status = 'done' THEN COALESCE(outcome_score, 1) ELSE 0 END), 0) as weighted_done
            FROM tasks WHERE kr_id = $1`,
           [krId]
         );
-        const { done_count, total_count } = taskCounts.rows[0];
+        const { total_count, weighted_done } = taskCounts.rows[0];
         progress = parseInt(total_count) > 0
-          ? parseInt(done_count) / parseInt(total_count)
+          ? parseFloat(weighted_done) / parseInt(total_count)
           : 0;
         break;
       }

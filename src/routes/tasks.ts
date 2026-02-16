@@ -24,7 +24,7 @@ const isValidUUID = (uuid: string): boolean => {
 
 router.post('/', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
-    const { title, description, category, objective_id, kr_id, initiative_id, estimate, priority, impact_note, due_date, blocking, assignee_id } = req.body;
+    const { title, description, category, objective_id, kr_id, initiative_id, estimate, priority, impact_note, due_date, blocking, assignee_id, dod, outcome } = req.body;
     const userId = req.userId;
 
     if (!title || !category) {
@@ -96,8 +96,8 @@ router.post('/', async (req: AuthenticatedRequest, res: Response): Promise<void>
     }
 
     const result = await pool.query(
-      `INSERT INTO tasks (user_id, title, description, category, objective_id, kr_id, initiative_id, estimate, priority, impact_note, due_date, root_kr_id, blocking, assignee_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+      `INSERT INTO tasks (user_id, title, description, category, objective_id, kr_id, initiative_id, estimate, priority, impact_note, due_date, root_kr_id, blocking, assignee_id, dod, outcome)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
        RETURNING *`,
       [
         userId,
@@ -113,7 +113,9 @@ router.post('/', async (req: AuthenticatedRequest, res: Response): Promise<void>
         due_date || null,
         rootKrId,
         blocking || false,
-        assignee_id || userId
+        assignee_id || userId,
+        dod || null,
+        outcome || null
       ]
     );
 
@@ -290,7 +292,7 @@ router.get('/:id', async (req: AuthenticatedRequest, res: Response): Promise<voi
 router.patch('/:id', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
-    const { title, description, category, objective_id, kr_id, initiative_id, estimate, priority, impact_note, status, due_date, blocking, assignee_id: newAssignee } = req.body;
+    const { title, description, category, objective_id, kr_id, initiative_id, estimate, priority, impact_note, status, due_date, blocking, assignee_id: newAssignee, dod, outcome, outcome_score, dod_review_status, dod_review_note, dod_confirmed } = req.body;
     const userId = req.userId;
 
     if (!isValidUUID(id)) {
@@ -426,6 +428,46 @@ router.patch('/:id', async (req: AuthenticatedRequest, res: Response): Promise<v
       values.push(newAssignee);
     }
 
+    if (dod !== undefined) {
+      updates.push(`dod = $${paramCount++}`);
+      values.push(dod);
+    }
+
+    if (outcome !== undefined) {
+      updates.push(`outcome = $${paramCount++}`);
+      values.push(outcome);
+    }
+
+    if (outcome_score !== undefined) {
+      const score = parseFloat(outcome_score);
+      if (isNaN(score) || score < 0 || score > 1) {
+        res.status(400).json({
+          code: 'INVALID_OUTCOME_SCORE',
+          message: 'outcome_score must be a number between 0 and 1'
+        });
+        return;
+      }
+      updates.push(`outcome_score = $${paramCount++}`);
+      values.push(score);
+    }
+
+    if (dod_review_status !== undefined) {
+      if (!['passed', 'needs_revision', 'partial'].includes(dod_review_status)) {
+        res.status(400).json({
+          code: 'INVALID_DOD_REVIEW_STATUS',
+          message: 'dod_review_status must be one of: passed, needs_revision, partial'
+        });
+        return;
+      }
+      updates.push(`dod_review_status = $${paramCount++}`);
+      values.push(dod_review_status);
+    }
+
+    if (dod_review_note !== undefined) {
+      updates.push(`dod_review_note = $${paramCount++}`);
+      values.push(dod_review_note);
+    }
+
     if (status !== undefined) {
       if (!isValidTaskStatus(status)) {
         res.status(400).json({
@@ -434,6 +476,20 @@ router.patch('/:id', async (req: AuthenticatedRequest, res: Response): Promise<v
         });
         return;
       }
+
+      // DoD Gate: if task has DoD and status is being set to done, require confirmation
+      if (status === 'done') {
+        const currentTask = existingTask.rows[0];
+        if (currentTask.dod && !dod_confirmed) {
+          res.status(400).json({
+            code: 'DOD_NOT_CONFIRMED',
+            message: 'Task has Definition of Done criteria. Please confirm completion by sending dod_confirmed: true',
+            dod: currentTask.dod
+          });
+          return;
+        }
+      }
+
       updates.push(`status = $${paramCount++}`);
       values.push(status);
 
@@ -485,6 +541,7 @@ router.post('/:id/complete', async (req: AuthenticatedRequest, res: Response): P
   try {
     const { id } = req.params;
     const userId = req.userId;
+    const { dod_confirmed, outcome_score } = req.body || {};
 
     if (!isValidUUID(id)) {
       res.status(400).json({
@@ -494,27 +551,64 @@ router.post('/:id/complete', async (req: AuthenticatedRequest, res: Response): P
       return;
     }
 
-    const result = await pool.query(
-      `UPDATE tasks 
-       SET status = 'done', completed_at = CURRENT_TIMESTAMP
-       WHERE id = $1 AND (
+    // Fetch task first to check DoD gate
+    const existingTask = await pool.query(
+      `SELECT * FROM tasks WHERE id = $1 AND (
         user_id = $2
         OR assignee_id = $2
         OR objective_id IN (
           SELECT id FROM objectives WHERE org_id IN (SELECT org_id FROM org_members WHERE user_id = $2)
         )
-       )
-       RETURNING *`,
+      )`,
       [id, userId]
     );
 
-    if (result.rows.length === 0) {
+    if (existingTask.rows.length === 0) {
       res.status(404).json({
         code: 'TASK_NOT_FOUND',
         message: 'Task not found'
       });
       return;
     }
+
+    const task = existingTask.rows[0];
+
+    // DoD Gate: if task has DoD, require explicit confirmation
+    if (task.dod && !dod_confirmed) {
+      res.status(400).json({
+        code: 'DOD_NOT_CONFIRMED',
+        message: 'Task has Definition of Done criteria. Please review and confirm by sending dod_confirmed: true',
+        dod: task.dod
+      });
+      return;
+    }
+
+    // Build update query with optional outcome_score
+    let updateSql = `UPDATE tasks SET status = 'done', completed_at = CURRENT_TIMESTAMP`;
+    const params: any[] = [id, userId];
+
+    if (outcome_score !== undefined) {
+      const score = parseFloat(outcome_score);
+      if (isNaN(score) || score < 0 || score > 1) {
+        res.status(400).json({
+          code: 'INVALID_OUTCOME_SCORE',
+          message: 'outcome_score must be a number between 0 and 1'
+        });
+        return;
+      }
+      updateSql += `, outcome_score = $3`;
+      params.push(score);
+    }
+
+    updateSql += ` WHERE id = $1 AND (
+      user_id = $2
+      OR assignee_id = $2
+      OR objective_id IN (
+        SELECT id FROM objectives WHERE org_id IN (SELECT org_id FROM org_members WHERE user_id = $2)
+      )
+    ) RETURNING *`;
+
+    const result = await pool.query(updateSql, params);
 
     const completed = result.rows[0];
     // Trigger scoring cascade

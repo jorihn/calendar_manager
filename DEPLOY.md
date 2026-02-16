@@ -76,11 +76,11 @@ NODE_ENV=production
 ```
 
 ```bash
-# Chạy schema SQL để tạo tables và seed data
-cat src/db/schema.sql | sudo -u postgres psql -d calendar_manager
+# Chạy schema SQL để tạo tables (của OKR system V2)
+cat src/db/okr_schema.sql | sudo -u postgres psql -d calendar_manager
 
-# Lấy token đã được auto-generate
-sudo -u postgres psql -d calendar_manager -c "SELECT token, role FROM agent_tokens;"
+# Chạy migrations để update các thay đổi mới nhất (DoD, Outcome, etc.)
+npm run migrate:up
 ```
 
 **Lưu ý:** Copy và lưu token này, bạn sẽ cần nó để authenticate API requests.
