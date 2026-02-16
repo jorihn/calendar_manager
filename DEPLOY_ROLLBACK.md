@@ -1,18 +1,25 @@
-# Deploy & Rollback Playbook (API Server)
+# Deploy & Rollback Playbook (API Server v2.1)
 
-This repo is treated as **stable v2.0** once tagged.
+Mục tiêu: mỗi release đều có thể truy vết rõ ràng theo bộ ba **git tag ↔ image tag/digest ↔ release record**.
 
-## Release checklist
+## 1) Trunk-based policy (bắt buộc)
+
+- `main` là trunk duy nhất để release.
+- Chỉ merge PR ngắn hạn (small batch), ưu tiên squash merge.
+- Chỉ tạo release từ `origin/main` (không release từ branch local).
+- Mỗi release phải có tag SemVer `vX.Y.Z` dạng annotated tag.
+
+## 2) Release checklist (v2.1 chuẩn hóa)
 
 1) **Pre-flight**
-- `git status` is clean
+- `git fetch origin`
+- `git checkout main && git pull --ff-only origin main`
+- `git status` sạch
 - `npm ci && npm run build`
 
-2) **DB backup (required before any migration)**
+2) **DB backup (required trước migration)**
 
 ```bash
-# Fill these env vars (or use DATABASE_URL)
-# export PGHOST=127.0.0.1 PGPORT=5432 PGUSER=... PGPASSWORD=... PGDATABASE=...
 mkdir -p /var/backups/api-server
 pg_dump -Fc -f /var/backups/api-server/pre_release_$(date +%F_%H%M%S).dump
 ```
@@ -24,24 +31,60 @@ npm run migrate:status
 npm run migrate:up
 ```
 
-4) **Deploy app**
-- Build: `npm run build`
-- Restart: `pm2 restart api-server --update-env`
-
-5) **Tag release**
+4) **Create git tag baseline**
 
 ```bash
-git tag -a v2.0.0 -m "Stable release v2.0.0"
-git push origin main --tags
+VERSION=v2.1.0
+git tag -a "$VERSION" -m "Release $VERSION"
+git push origin "$VERSION"
 ```
 
-## Rollback
+5) **Build & push image with immutable tags**
 
-### Rollback application code
+```bash
+VERSION=v2.1.0
+SHA=$(git rev-parse --short HEAD)
+IMAGE=ghcr.io/jorihn/calendar_manager-api
+
+docker build -t "$IMAGE:$VERSION" -t "$IMAGE:$VERSION-$SHA" .
+docker push "$IMAGE:$VERSION"
+docker push "$IMAGE:$VERSION-$SHA"
+
+# Lấy digest sau push (ví dụ bằng buildx imagetools)
+docker buildx imagetools inspect "$IMAGE:$VERSION"
+```
+
+6) **Create release record (required)**
+- Tạo file `releases/<version>.md` (ví dụ `releases/v2.1.0.md`)
+- Bắt buộc có:
+  - commit SHA đầy đủ
+  - git tag
+  - image tag
+  - image digest (sha256)
+  - config/version note (migrate, env, feature flag)
+
+## 3) Deploy
+
+- Pull artifact theo **digest** (không deploy theo mutable tag latest)
+- Restart service
+- Smoke test: `/health`, endpoint quan trọng, migration status
+
+## 4) Rollback
+
+### Rollback application code/image
+
+Ưu tiên rollback theo **image digest** từ release record:
+
+```bash
+docker pull ghcr.io/jorihn/calendar_manager-api@sha256:<digest>
+# restart service bằng image digest đó
+```
+
+Nếu deploy theo source:
 
 ```bash
 git fetch --tags
-git checkout v2.0.0
+git checkout v2.1.0
 npm ci
 npm run build
 pm2 restart api-server --update-env
@@ -49,26 +92,26 @@ pm2 restart api-server --update-env
 
 ### Rollback database
 
-Preferred: **restore from dump** created before the migration.
+Preferred: restore từ dump tạo trước release.
 
 ```bash
-# DANGER: this overwrites the database
+# DANGER: ghi đè DB hiện tại
 pg_restore --clean --if-exists -d "$PGDATABASE" /var/backups/api-server/<dump-file>.dump
 ```
 
-If you have a safe down-migration for the last release, you can rollback one step:
+Nếu migration hỗ trợ down an toàn:
 
 ```bash
 npm run migrate:down -- 1
 ```
 
-## Migration rules (to keep rollback possible)
+## 5) Migration rules (để rollback được)
 
-- Write migrations as *incremental* changes in `src/db/migrations/`.
-- Every `.up.sql` **must** have a matching `.down.sql`.
-- Prefer backward-compatible changes:
-  - add columns/tables first (nullable/default)
+- Viết migration tăng dần trong `src/db/migrations/`.
+- Mỗi `.up.sql` phải có `.down.sql` tương ứng.
+- Ưu tiên backward-compatible rollout:
+  - thêm cột/bảng trước
   - deploy app
   - backfill data
-  - only then do destructive changes (drop/rename)
-- Before any destructive migration, require a DB backup.
+  - chỉ destructive sau khi ổn định
+- Trước thay đổi destructive: bắt buộc backup DB.

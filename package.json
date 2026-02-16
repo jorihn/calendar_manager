@@ -1,6 +1,6 @@
 {
   "name": "calendar-manager-backend",
-  "version": "1.0.0",
+  "version": "2.1.0",
   "description": "Calendar Manager MVP Backend",
   "main": "dist/index.js",
   "scripts": {
