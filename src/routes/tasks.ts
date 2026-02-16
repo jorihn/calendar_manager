@@ -523,6 +523,15 @@ router.patch('/:id', async (req: AuthenticatedRequest, res: Response): Promise<v
       values
     );
 
+    if (result.rows.length === 0) {
+      // Either task doesn't exist or caller has no permission
+      res.status(404).json({
+        code: 'TASK_NOT_FOUND',
+        message: 'Task not found'
+      });
+      return;
+    }
+
     const updated = result.rows[0];
     // Trigger scoring cascade
     cascadeFromTask(updated.id).catch(err => console.error('Scoring error (task update):', err));
@@ -609,6 +618,14 @@ router.post('/:id/complete', async (req: AuthenticatedRequest, res: Response): P
     ) RETURNING *`;
 
     const result = await pool.query(updateSql, params);
+
+    if (result.rows.length === 0) {
+      res.status(404).json({
+        code: 'TASK_NOT_FOUND',
+        message: 'Task not found'
+      });
+      return;
+    }
 
     const completed = result.rows[0];
     // Trigger scoring cascade
