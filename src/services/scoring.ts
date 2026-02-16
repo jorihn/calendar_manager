@@ -353,7 +353,14 @@ export async function computeAlignmentDepth(taskId: string): Promise<number> {
  * Full cascade recompute triggered by a KR change.
  * Recomputes: KR progress → parent KR progress (bubble up) → Objective progress → Risk → Velocity
  */
-export async function cascadeFromKR(krId: string): Promise<void> {
+export async function cascadeFromKR(krId: string, refreshAtEnd = true): Promise<void> {
+  const userResult = await pool.query(
+    'SELECT user_id FROM key_results WHERE id = $1',
+    [krId]
+  );
+
+  const snapshotUserId = userResult.rows.length > 0 ? userResult.rows[0].user_id : null;
+
   // 1. Compute this KR's progress
   await computeKRProgress(krId);
 
@@ -367,7 +374,7 @@ export async function cascadeFromKR(krId: string): Promise<void> {
     const { parent_kr_id, objective_id } = kr.rows[0];
 
     if (parent_kr_id) {
-      await cascadeFromKR(parent_kr_id); // recursive bubble up
+      await cascadeFromKR(parent_kr_id, false); // recursive bubble up
     }
 
     // 3. Compute risk & velocity for this KR
@@ -379,6 +386,11 @@ export async function cascadeFromKR(krId: string): Promise<void> {
       await computeObjectiveProgress(objective_id);
       await computeObjectiveRiskScore(objective_id);
     }
+  }
+
+  // 5. Refresh AI snapshot after KR/objective metrics are updated
+  if (refreshAtEnd && snapshotUserId) {
+    await refreshSnapshot(snapshotUserId);
   }
 }
 
@@ -400,10 +412,10 @@ export async function cascadeFromTask(taskId: string): Promise<void> {
   if (task.rows.length > 0) {
     if (task.rows[0].kr_id) {
       await cascadeFromKR(task.rows[0].kr_id);
+    } else {
+      // 3. Refresh AI snapshot for task-only changes not linked to any KR
+      await refreshSnapshot(task.rows[0].user_id);
     }
-
-    // 3. Refresh AI snapshot
-    await refreshSnapshot(task.rows[0].user_id);
   }
 }
 

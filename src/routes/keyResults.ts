@@ -94,7 +94,7 @@ router.post('/', async (req: AuthenticatedRequest, res: Response): Promise<void>
     );
 
     const created = result.rows[0];
-    cascadeFromKR(created.id).catch(err => console.error('Scoring error (KR create):', err));
+    await cascadeFromKR(created.id);
 
     res.status(201).json(created);
   } catch (error) {
@@ -300,7 +300,7 @@ router.patch('/:id', async (req: AuthenticatedRequest, res: Response): Promise<v
     );
 
     const updated = result.rows[0];
-    cascadeFromKR(updated.id).catch(err => console.error('Scoring error (KR update):', err));
+    await cascadeFromKR(updated.id);
 
     res.json(updated);
   } catch (error) {
