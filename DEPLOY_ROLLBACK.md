@@ -1,6 +1,6 @@
 # Deploy & Rollback Playbook (API Server v2.1)
 
-Mục tiêu: mỗi release đều có thể truy vết rõ ràng theo bộ ba **git tag ↔ image tag/digest ↔ release record**.
+Mục tiêu: mỗi release đều có thể truy vết rõ ràng theo bộ ba **git tag ↔ commit SHA ↔ release record** (không phụ thuộc Docker).
 
 ## 1) Trunk-based policy (bắt buộc)
 
@@ -39,19 +39,15 @@ git tag -a "$VERSION" -m "Release $VERSION"
 git push origin "$VERSION"
 ```
 
-5) **Build & push image with immutable tags**
+5) **Deploy từ source tag trên VPS (non-Docker)**
 
 ```bash
 VERSION=v2.1.0
-SHA=$(git rev-parse --short HEAD)
-IMAGE=ghcr.io/jorihn/calendar_manager-api
-
-docker build -t "$IMAGE:$VERSION" -t "$IMAGE:$VERSION-$SHA" .
-docker push "$IMAGE:$VERSION"
-docker push "$IMAGE:$VERSION-$SHA"
-
-# Lấy digest sau push (ví dụ bằng buildx imagetools)
-docker buildx imagetools inspect "$IMAGE:$VERSION"
+git fetch --tags origin
+git checkout "$VERSION"
+npm ci
+npm run build
+pm2 restart api-server --update-env
 ```
 
 6) **Create release record (required)**
@@ -59,28 +55,22 @@ docker buildx imagetools inspect "$IMAGE:$VERSION"
 - Bắt buộc có:
   - commit SHA đầy đủ
   - git tag
-  - image tag
-  - image digest (sha256)
+  - deployment artifact: `source@tag + commit` (và optional `dist` checksum)
+  - target environment (VPS/service name)
   - config/version note (migrate, env, feature flag)
 
 ## 3) Deploy
 
-- Pull artifact theo **digest** (không deploy theo mutable tag latest)
-- Restart service
+- Pull source theo **tag** (không deploy từ nhánh local chưa tag)
+- Build lại trên VPS (`npm ci && npm run build`)
+- Restart service (`pm2 restart ... --update-env`)
 - Smoke test: `/health`, endpoint quan trọng, migration status
 
 ## 4) Rollback
 
-### Rollback application code/image
+### Rollback application code (source/tag)
 
-Ưu tiên rollback theo **image digest** từ release record:
-
-```bash
-docker pull ghcr.io/jorihn/calendar_manager-api@sha256:<digest>
-# restart service bằng image digest đó
-```
-
-Nếu deploy theo source:
+Rollback theo tag đã audit trong release record:
 
 ```bash
 git fetch --tags

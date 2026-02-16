@@ -852,6 +852,10 @@ Backend tự động tính các scores khi data thay đổi (on-write).
 
 Trả về file API documentation (markdown).
 
+### GET /api/agent-bug-reporting-guide
+
+Trả về hướng dẫn report bug api cho agent.s
+
 ---
 
 ## ❌ Error Codes
