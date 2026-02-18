@@ -439,6 +439,72 @@ Soft delete → `status = 'cancelled'`.
 
 ---
 
+### Parking Lot
+
+Parking Lot = nơi lưu tạm các task/ý tưởng **off-topic** (chưa đưa vào OKR hiện tại), để review ở cycle sau.
+
+Fields chính:
+- `item` — tên task/ý tưởng
+- `description` — mô tả + lý do cần làm
+- `context` — ngữ cảnh lúc nghĩ ra
+- `owner_id` — người nghĩ ra (từ token)
+- `priority` — `high` | `low`
+- `proposed_cycle` — cycle dự kiến (string)
+- `status` — `open` | `parked`
+- `created_at` — thời điểm tạo
+
+#### POST /parking-lot
+
+```http
+POST /parking-lot
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "item": "Add Telegram purchase flow",
+  "description": "Need a clean flow so users can buy agent plans",
+  "context": "Came up while designing the onboarding for close alpha",
+  "priority": "high",
+  "proposed_cycle": "Q2 2026",
+  "status": "open"
+}
+```
+
+#### GET /parking-lot
+
+```http
+GET /parking-lot
+GET /parking-lot?status=open
+GET /parking-lot?priority=high
+Authorization: Bearer <token>
+```
+
+#### GET /parking-lot/:id
+
+```http
+GET /parking-lot/{id}
+Authorization: Bearer <token>
+```
+
+#### PATCH /parking-lot/:id
+
+Update fields: `item`, `description`, `context`, `priority`, `proposed_cycle`, `status`.
+
+```http
+PATCH /parking-lot/{id}
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "status": "parked",
+  "context": "Need to discuss scope with team before moving to OKR"
+}
+```
+
+> Note: `owner_id` is derived from token; items are only visible/editable by their owner.
+
+---
+
 ### Tasks
 
 Task = đơn vị nhỏ, thi hành được, có due date rõ ràng.

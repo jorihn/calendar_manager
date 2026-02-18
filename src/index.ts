@@ -8,6 +8,7 @@ import authRoutes from './routes/auth';
 import objectivesRoutes from './routes/objectives';
 import keyResultsRoutes from './routes/keyResults';
 import tasksRoutes from './routes/tasks';
+import parkingLotRoutes from './routes/parkingLot';
 import organizationsRoutes from './routes/organizations';
 import cyclesRoutes from './routes/cycles';
 import initiativesRoutes from './routes/initiatives';
@@ -64,6 +65,7 @@ app.use('/objectives', authenticateToken, objectivesRoutes);
 app.use('/key-results', authenticateToken, keyResultsRoutes);
 app.use('/initiatives', authenticateToken, initiativesRoutes);
 app.use('/tasks', authenticateToken, tasksRoutes);
+app.use('/parking-lot', authenticateToken, parkingLotRoutes);
 app.use('/ai', authenticateToken, aiRoutes);
 
 app.use(errorHandler);
