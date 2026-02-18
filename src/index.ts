@@ -8,6 +8,7 @@ import authRoutes from './routes/auth';
 import objectivesRoutes from './routes/objectives';
 import keyResultsRoutes from './routes/keyResults';
 import tasksRoutes from './routes/tasks';
+import parkingLotRoutes from './routes/parkingLot';
 import organizationsRoutes from './routes/organizations';
 import cyclesRoutes from './routes/cycles';
 import initiativesRoutes from './routes/initiatives';
@@ -56,13 +57,13 @@ app.get('/api/docs', (req, res) => {
   }
 });
 
-app.get('/api/agent-bug-reporting-guide', (req, res) => {
-  const guidePath = path.join(__dirname, '../AGENT_BUG_REPORTING_GUIDE.md');
+app.get('/api/bug-reporting', (req, res) => {
+  const guidePath = path.join(__dirname, '../public/AGENT_BUG_REPORTING_GUIDE.md');
   try {
     const content = fs.readFileSync(guidePath, 'utf-8');
     res.type('text/markdown').send(content);
   } catch (error) {
-    res.status(404).json({ code: 'GUIDE_NOT_FOUND', message: 'Agent bug reporting guide not found' });
+    res.status(404).json({ code: 'DOC_NOT_FOUND', message: 'Bug reporting guide not found' });
   }
 });
 
@@ -74,6 +75,7 @@ app.use('/objectives', authenticateToken, objectivesRoutes);
 app.use('/key-results', authenticateToken, keyResultsRoutes);
 app.use('/initiatives', authenticateToken, initiativesRoutes);
 app.use('/tasks', authenticateToken, tasksRoutes);
+app.use('/parking-lot', authenticateToken, parkingLotRoutes);
 app.use('/ai', authenticateToken, aiRoutes);
 
 app.use(errorHandler);

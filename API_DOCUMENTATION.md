@@ -439,6 +439,87 @@ Soft delete → `status = 'cancelled'`.
 
 ---
 
+### Parking Lot
+
+Parking Lot = nơi lưu tạm các task/ý tưởng **off-topic** (chưa đưa vào OKR hiện tại), để review ở cycle sau.
+
+Fields chính:
+- `item` — tên task/ý tưởng
+- `description` — mô tả + lý do cần làm
+- `context` — ngữ cảnh lúc nghĩ ra
+- `owner_id` — người nghĩ ra (từ token)
+- `org_id` — organization scope (nullable). Nếu có `org_id` thì **mọi member của org** đều xem được.
+- `priority` — `high` | `low`
+- `proposed_cycle` — cycle dự kiến (string)
+- `status` — `open` | `parked`
+- `created_at` — thời điểm tạo
+- `deleted_at` — soft delete timestamp (nullable)
+
+#### POST /parking-lot
+
+```http
+POST /parking-lot
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "org_id": "uuid (optional)",
+  "item": "Add Telegram purchase flow",
+  "description": "Need a clean flow so users can buy agent plans",
+  "context": "Came up while designing the onboarding for close alpha",
+  "priority": "high",
+  "proposed_cycle": "Q2 2026",
+  "status": "open"
+}
+```
+
+#### GET /parking-lot
+
+```http
+GET /parking-lot
+GET /parking-lot?status=open
+GET /parking-lot?priority=high
+Authorization: Bearer <token>
+```
+
+#### GET /parking-lot/:id
+
+```http
+GET /parking-lot/{id}
+Authorization: Bearer <token>
+```
+
+#### PATCH /parking-lot/:id
+
+Update fields: `item`, `description`, `context`, `priority`, `proposed_cycle`, `status`, `org_id`.
+
+#### DELETE /parking-lot/:id
+
+Soft delete (không xoá DB row), set `deleted_at = now()`.
+
+```http
+DELETE /parking-lot/{id}
+Authorization: Bearer <token>
+```
+
+```http
+PATCH /parking-lot/{id}
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "status": "parked",
+  "context": "Need to discuss scope with team before moving to OKR"
+}
+```
+
+> Note:
+> - `owner_id` is derived from token.
+> - Nếu item có `org_id`, **mọi member** của org xem được.
+> - Edit/Delete: `owner_id` hoặc org role `admin/owner`.
+
+---
+
 ### Tasks
 
 Task = đơn vị nhỏ, thi hành được, có due date rõ ràng.
@@ -543,7 +624,8 @@ Default: chỉ tasks chưa done. Dùng `?status=done` để xem completed.
 
 #### PATCH /tasks/:id
 
-Có thể update: title, description, category, objective_id, kr_id, initiative_id, estimate, priority, impact_note, status, due_date, blocking, **assignee_id**, **dod**, **outcome**, **outcome_score**, **dod_review_status**, **dod_review_note**.
+Có thể update: title, description, category, objective_id, kr_id, initiative_id, estimate, priority, impact_note, status, due_date, blocking, **assignee_id**, **dod**, **outcome**, **outcome_score**, **dod_review_status**, **dod_review_note**,
+**progress_percent**, **progress_note**, **next_action**, **blocked_reason**, **last_worked_at**.
 
 | Field | Type | Mô tả |
 |-------|------|-------|
@@ -551,8 +633,16 @@ Có thể update: title, description, category, objective_id, kr_id, initiative_
 | `dod_review_status` | enum | `passed`, `needs_revision`, `partial` |
 | `dod_review_note` | string | Ghi chú review DoD |
 | `dod_confirmed` | boolean | Bắt buộc khi set `status: "done"` nếu task có `dod` |
+| `progress_percent` | int | 0–100, % tiến độ (nullable) |
+| `progress_note` | string | Ghi chú tiến độ/handoff (nullable) |
+| `next_action` | string | Bước tiếp theo để làm tiếp ngày mai (nullable) |
+| `blocked_reason` | string | Lý do bị block (nullable) |
+| `last_worked_at` | timestamp | Lần cuối task được “đụng” (auto update khi status=doing hoặc update progress fields) |
+| `progress_score` | float | 0–1, server-evaluated (non-blocking) từ progress_note/next_action/DoD/outcome |
 
 > **⚠️ DoD Gate:** Khi PATCH `status` → `done`, nếu task có field `dod`, server sẽ trả `DOD_NOT_CONFIRMED` (400) trừ khi gửi kèm `dod_confirmed: true`.
+>
+> **📝 Daily hand-off (khuyến nghị):** Khi set `status: "doing"`, nên gửi thêm ít nhất một trong `progress_note` hoặc `next_action` để hôm sau/agent khác tiếp tục mượt hơn. Server sẽ không hard-fail nếu thiếu (có thể trả warning header).
 
 #### POST /tasks/:id/complete
 
@@ -852,9 +942,11 @@ Backend tự động tính các scores khi data thay đổi (on-write).
 
 Trả về file API documentation (markdown).
 
-### GET /api/agent-bug-reporting-guide
+### GET /api/bug-reporting
 
-Trả về hướng dẫn report bug api cho agent.s
+Trả về bug reporting guide cho AI Agents (markdown).
+
+- Link: `https://agen.tics.network/v1/api/bug-reporting`
 
 ---
 

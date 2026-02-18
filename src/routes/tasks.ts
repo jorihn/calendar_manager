@@ -2,6 +2,7 @@ import { Router, Response } from 'express';
 import pool from '../db/pool';
 import { AuthenticatedRequest } from '../types';
 import { cascadeFromTask } from '../services/scoring';
+import { evaluateAndPersistProgressScore } from '../services/progressScoring';
 
 const router = Router();
 
@@ -24,7 +25,8 @@ const isValidUUID = (uuid: string): boolean => {
 
 router.post('/', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
-    const { title, description, category, objective_id, kr_id, initiative_id, estimate, priority, impact_note, due_date, blocking, assignee_id, dod, outcome } = req.body;
+    const { title, description, category, objective_id, kr_id, initiative_id, estimate, priority, impact_note, due_date, blocking, assignee_id, dod, outcome,
+      progress_percent, progress_note, next_action, blocked_reason } = req.body;
     const userId = req.userId;
 
     if (!title || !category) {
@@ -95,9 +97,29 @@ router.post('/', async (req: AuthenticatedRequest, res: Response): Promise<void>
       }
     }
 
+    // Validate progress_percent if provided
+    if (progress_percent !== undefined) {
+      const p = parseInt(progress_percent, 10);
+      if (!Number.isFinite(p) || p < 0 || p > 100) {
+        res.status(400).json({
+          code: 'INVALID_PROGRESS_PERCENT',
+          message: 'progress_percent must be an integer between 0 and 100'
+        });
+        return;
+      }
+    }
+
     const result = await pool.query(
-      `INSERT INTO tasks (user_id, title, description, category, objective_id, kr_id, initiative_id, estimate, priority, impact_note, due_date, root_kr_id, blocking, assignee_id, dod, outcome)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+      `INSERT INTO tasks (
+          user_id, title, description, category, objective_id, kr_id, initiative_id,
+          estimate, priority, impact_note, due_date, root_kr_id, blocking, assignee_id,
+          dod, outcome, progress_percent, progress_note, next_action, blocked_reason, last_worked_at
+       )
+       VALUES (
+          $1, $2, $3, $4, $5, $6, $7,
+          $8, $9, $10, $11, $12, $13, $14,
+          $15, $16, $17, $18, $19, $20, $21
+       )
        RETURNING *`,
       [
         userId,
@@ -115,7 +137,12 @@ router.post('/', async (req: AuthenticatedRequest, res: Response): Promise<void>
         blocking || false,
         assignee_id || userId,
         dod || null,
-        outcome || null
+        outcome || null,
+        progress_percent !== undefined ? parseInt(progress_percent, 10) : null,
+        progress_note || null,
+        next_action || null,
+        blocked_reason || null,
+        (progress_percent !== undefined || progress_note || next_action || blocked_reason) ? new Date().toISOString() : null
       ]
     );
 
@@ -292,7 +319,12 @@ router.get('/:id', async (req: AuthenticatedRequest, res: Response): Promise<voi
 router.patch('/:id', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
-    const { title, description, category, objective_id, kr_id, initiative_id, estimate, priority, impact_note, status, due_date, blocking, assignee_id: newAssignee, dod, outcome, outcome_score, dod_review_status, dod_review_note, dod_confirmed } = req.body;
+    const {
+      title, description, category, objective_id, kr_id, initiative_id, estimate, priority,
+      impact_note, status, due_date, blocking, assignee_id: newAssignee,
+      dod, outcome, outcome_score, dod_review_status, dod_review_note, dod_confirmed,
+      progress_percent, progress_note, next_action, blocked_reason
+    } = req.body;
     const userId = req.userId;
 
     if (!isValidUUID(id)) {
@@ -468,6 +500,45 @@ router.patch('/:id', async (req: AuthenticatedRequest, res: Response): Promise<v
       values.push(dod_review_note);
     }
 
+    // Progress / hand-off fields
+    let touchedProgressFields = false;
+
+    if (progress_percent !== undefined) {
+      if (progress_percent === null) {
+        updates.push(`progress_percent = NULL`);
+      } else {
+        const p = parseInt(progress_percent, 10);
+        if (!Number.isFinite(p) || p < 0 || p > 100) {
+          res.status(400).json({
+            code: 'INVALID_PROGRESS_PERCENT',
+            message: 'progress_percent must be an integer between 0 and 100'
+          });
+          return;
+        }
+        updates.push(`progress_percent = $${paramCount++}`);
+        values.push(p);
+      }
+      touchedProgressFields = true;
+    }
+
+    if (progress_note !== undefined) {
+      updates.push(`progress_note = $${paramCount++}`);
+      values.push(progress_note);
+      touchedProgressFields = true;
+    }
+
+    if (next_action !== undefined) {
+      updates.push(`next_action = $${paramCount++}`);
+      values.push(next_action);
+      touchedProgressFields = true;
+    }
+
+    if (blocked_reason !== undefined) {
+      updates.push(`blocked_reason = $${paramCount++}`);
+      values.push(blocked_reason);
+      touchedProgressFields = true;
+    }
+
     if (status !== undefined) {
       if (!isValidTaskStatus(status)) {
         res.status(400).json({
@@ -496,6 +567,16 @@ router.patch('/:id', async (req: AuthenticatedRequest, res: Response): Promise<v
       if (status === 'done') {
         updates.push(`completed_at = CURRENT_TIMESTAMP`);
       }
+
+      // Encourage (non-blocking): status=doing should ideally include progress_note or next_action
+      if (status === 'doing') {
+        const currentTask = existingTask.rows[0];
+        const finalProgressNote = progress_note !== undefined ? progress_note : currentTask.progress_note;
+        const finalNextAction = next_action !== undefined ? next_action : currentTask.next_action;
+        if (!finalProgressNote && !finalNextAction) {
+          res.set('X-Warning', 'Consider providing progress_note or next_action for smoother daily hand-off');
+        }
+      }
     }
 
     if (updates.length === 0) {
@@ -504,6 +585,11 @@ router.patch('/:id', async (req: AuthenticatedRequest, res: Response): Promise<v
         message: 'No valid fields provided for update'
       });
       return;
+    }
+
+    // Update last_worked_at if any progress/hand-off field changed or status is actively being worked
+    if (touchedProgressFields || status === 'doing') {
+      updates.push(`last_worked_at = CURRENT_TIMESTAMP`);
     }
 
     values.push(id);
@@ -523,9 +609,23 @@ router.patch('/:id', async (req: AuthenticatedRequest, res: Response): Promise<v
       values
     );
 
+    if (result.rows.length === 0) {
+      // Either task doesn't exist or caller has no permission
+      res.status(404).json({
+        code: 'TASK_NOT_FOUND',
+        message: 'Task not found'
+      });
+      return;
+    }
+
     const updated = result.rows[0];
     // Trigger scoring cascade
     cascadeFromTask(updated.id).catch(err => console.error('Scoring error (task update):', err));
+
+    // Non-blocking progress scoring (heuristic stub for now)
+    if (touchedProgressFields || status !== undefined || dod !== undefined || outcome !== undefined) {
+      evaluateAndPersistProgressScore(updated.id).catch(err => console.error('Progress scoring error (task update):', err));
+    }
 
     res.json(updated);
   } catch (error) {
@@ -610,9 +710,20 @@ router.post('/:id/complete', async (req: AuthenticatedRequest, res: Response): P
 
     const result = await pool.query(updateSql, params);
 
+    if (result.rows.length === 0) {
+      res.status(404).json({
+        code: 'TASK_NOT_FOUND',
+        message: 'Task not found'
+      });
+      return;
+    }
+
     const completed = result.rows[0];
     // Trigger scoring cascade
     cascadeFromTask(completed.id).catch(err => console.error('Scoring error (task complete):', err));
+
+    // Ensure progress_score reflects done state (non-blocking)
+    evaluateAndPersistProgressScore(completed.id).catch(err => console.error('Progress scoring error (task complete):', err));
 
     res.json(completed);
   } catch (error) {
