@@ -813,6 +813,8 @@ Authorization: Bearer <token>
 
 KRs sorted theo risk_score DESC.
 
+Mặc định endpoint chỉ trả KR thuộc objective `active` và cycle `active` (hoặc objective không gắn cycle) để tránh nhiễu dữ liệu lịch sử.
+
 ```http
 GET /ai/risks?threshold=0.5
 Authorization: Bearer <token>
@@ -821,6 +823,9 @@ Authorization: Bearer <token>
 | Query | Mô tả |
 |-------|-------|
 | `threshold` | Minimum risk score (default: 0) |
+| `objective_id` | Lọc theo objective cụ thể (UUID) |
+| `cycle_id` | Lọc theo cycle cụ thể (UUID) |
+| `include_closed` | `true` để bao gồm objective/cycle đã đóng hoặc archived (mặc định: `false`) |
 
 ### GET /ai/alignment-gaps
 

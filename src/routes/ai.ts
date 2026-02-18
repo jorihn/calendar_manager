@@ -104,17 +104,50 @@ router.get('/risks', async (req: AuthenticatedRequest, res: Response): Promise<v
   try {
     const userId = req.userId!;
     const threshold = parseFloat(req.query.threshold as string) || 0;
+    const objectiveId = req.query.objective_id as string | undefined;
+    const cycleId = req.query.cycle_id as string | undefined;
+    const includeClosed = (req.query.include_closed as string | undefined) === 'true';
 
-    const result = await pool.query(
-      `SELECT kr.id, kr.title as t, kr.progress as p, kr.risk_score as r, kr.velocity as v,
-              kr.type, kr.target, kr.current,
-              o.id as oid, o.title as o_title
-       FROM key_results kr
-       LEFT JOIN objectives o ON kr.objective_id = o.id
-       WHERE kr.user_id = $1 AND kr.risk_score >= $2
-       ORDER BY kr.risk_score DESC`,
-      [userId, threshold]
-    );
+    if (objectiveId && !isValidUUID(objectiveId)) {
+      res.status(400).json({ code: 'INVALID_OBJECTIVE_ID', message: 'Invalid objective_id format' });
+      return;
+    }
+
+    if (cycleId && !isValidUUID(cycleId)) {
+      res.status(400).json({ code: 'INVALID_CYCLE_ID', message: 'Invalid cycle_id format' });
+      return;
+    }
+
+    let query = `SELECT kr.id, kr.title as t, kr.progress as p, kr.risk_score as r, kr.velocity as v,
+                        kr.type, kr.target, kr.current,
+                        o.id as oid, o.title as o_title,
+                        o.cycle_id, c.status as cycle_status
+                 FROM key_results kr
+                 JOIN objectives o ON kr.objective_id = o.id
+                 LEFT JOIN cycles c ON o.cycle_id = c.id
+                 WHERE kr.user_id = $1 AND kr.risk_score >= $2`;
+
+    const params: Array<string | number> = [userId, threshold];
+    let paramCount = 3;
+
+    // Default scope: only active objectives and active cycles (or objectives without cycle)
+    if (!includeClosed) {
+      query += ` AND o.status = 'active' AND (o.cycle_id IS NULL OR c.status = 'active')`;
+    }
+
+    if (objectiveId) {
+      query += ` AND o.id = $${paramCount++}`;
+      params.push(objectiveId);
+    }
+
+    if (cycleId) {
+      query += ` AND o.cycle_id = $${paramCount++}`;
+      params.push(cycleId);
+    }
+
+    query += ' ORDER BY kr.risk_score DESC';
+
+    const result = await pool.query(query, params);
 
     res.json({ risks: result.rows });
   } catch (error) {
