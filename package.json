@@ -1,6 +1,6 @@
 {
   "name": "calendar-manager-backend",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Calendar Manager MVP Backend",
   "main": "dist/index.js",
   "scripts": {
@@ -16,7 +16,6 @@
   "engines": {
     "node": ">=18"
   },
-
   "keywords": [],
   "author": "",
   "license": "ISC",
