@@ -57,6 +57,16 @@ app.get('/api/docs', (req, res) => {
   }
 });
 
+app.get('/api/bug-reporting', (req, res) => {
+  const guidePath = path.join(__dirname, '../public/AGENT_BUG_REPORTING_GUIDE.md');
+  try {
+    const content = fs.readFileSync(guidePath, 'utf-8');
+    res.type('text/markdown').send(content);
+  } catch (error) {
+    res.status(404).json({ code: 'DOC_NOT_FOUND', message: 'Bug reporting guide not found' });
+  }
+});
+
 app.use('/auth', authRoutes);
 app.use('/calendar', authenticateToken, calendarRoutes);
 app.use('/organizations', authenticateToken, organizationsRoutes);

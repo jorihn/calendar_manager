@@ -942,6 +942,12 @@ Backend tự động tính các scores khi data thay đổi (on-write).
 
 Trả về file API documentation (markdown).
 
+### GET /api/bug-reporting
+
+Trả về bug reporting guide cho AI Agents (markdown).
+
+- Link: `https://agen.tics.network/v1/api/bug-reporting`
+
 ---
 
 ## ❌ Error Codes
