@@ -448,10 +448,12 @@ Fields chính:
 - `description` — mô tả + lý do cần làm
 - `context` — ngữ cảnh lúc nghĩ ra
 - `owner_id` — người nghĩ ra (từ token)
+- `org_id` — organization scope (nullable). Nếu có `org_id` thì **mọi member của org** đều xem được.
 - `priority` — `high` | `low`
 - `proposed_cycle` — cycle dự kiến (string)
 - `status` — `open` | `parked`
 - `created_at` — thời điểm tạo
+- `deleted_at` — soft delete timestamp (nullable)
 
 #### POST /parking-lot
 
@@ -461,6 +463,7 @@ Authorization: Bearer <token>
 Content-Type: application/json
 
 {
+  "org_id": "uuid (optional)",
   "item": "Add Telegram purchase flow",
   "description": "Need a clean flow so users can buy agent plans",
   "context": "Came up while designing the onboarding for close alpha",
@@ -488,7 +491,16 @@ Authorization: Bearer <token>
 
 #### PATCH /parking-lot/:id
 
-Update fields: `item`, `description`, `context`, `priority`, `proposed_cycle`, `status`.
+Update fields: `item`, `description`, `context`, `priority`, `proposed_cycle`, `status`, `org_id`.
+
+#### DELETE /parking-lot/:id
+
+Soft delete (không xoá DB row), set `deleted_at = now()`.
+
+```http
+DELETE /parking-lot/{id}
+Authorization: Bearer <token>
+```
 
 ```http
 PATCH /parking-lot/{id}
@@ -501,7 +513,10 @@ Content-Type: application/json
 }
 ```
 
-> Note: `owner_id` is derived from token; items are only visible/editable by their owner.
+> Note:
+> - `owner_id` is derived from token.
+> - Nếu item có `org_id`, **mọi member** của org xem được.
+> - Edit/Delete: `owner_id` hoặc org role `admin/owner`.
 
 ---
 
