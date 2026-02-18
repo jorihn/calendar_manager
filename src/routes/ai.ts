@@ -103,7 +103,9 @@ router.get('/priorities', async (req: AuthenticatedRequest, res: Response): Prom
 router.get('/risks', async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const userId = req.userId!;
-    const threshold = parseFloat(req.query.threshold as string) || 0;
+    const thresholdParam = req.query.threshold as string | undefined;
+    const parsedThreshold = thresholdParam !== undefined ? parseFloat(thresholdParam) : NaN;
+    const threshold = Number.isNaN(parsedThreshold) ? 0.01 : parsedThreshold;
     const objectiveId = req.query.objective_id as string | undefined;
     const cycleId = req.query.cycle_id as string | undefined;
     const includeClosed = (req.query.include_closed as string | undefined) === 'true';

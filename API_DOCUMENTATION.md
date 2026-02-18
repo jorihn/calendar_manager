@@ -822,7 +822,7 @@ Authorization: Bearer <token>
 
 | Query | Mô tả |
 |-------|-------|
-| `threshold` | Minimum risk score (default: 0) |
+| `threshold` | Minimum risk score (default: 0.01) |
 | `objective_id` | Lọc theo objective cụ thể (UUID) |
 | `cycle_id` | Lọc theo cycle cụ thể (UUID) |
 | `include_closed` | `true` để bao gồm objective/cycle đã đóng hoặc archived (mặc định: `false`) |
