@@ -543,7 +543,8 @@ Default: chỉ tasks chưa done. Dùng `?status=done` để xem completed.
 
 #### PATCH /tasks/:id
 
-Có thể update: title, description, category, objective_id, kr_id, initiative_id, estimate, priority, impact_note, status, due_date, blocking, **assignee_id**, **dod**, **outcome**, **outcome_score**, **dod_review_status**, **dod_review_note**.
+Có thể update: title, description, category, objective_id, kr_id, initiative_id, estimate, priority, impact_note, status, due_date, blocking, **assignee_id**, **dod**, **outcome**, **outcome_score**, **dod_review_status**, **dod_review_note**,
+**progress_percent**, **progress_note**, **next_action**, **blocked_reason**, **last_worked_at**.
 
 | Field | Type | Mô tả |
 |-------|------|-------|
@@ -551,8 +552,16 @@ Có thể update: title, description, category, objective_id, kr_id, initiative_
 | `dod_review_status` | enum | `passed`, `needs_revision`, `partial` |
 | `dod_review_note` | string | Ghi chú review DoD |
 | `dod_confirmed` | boolean | Bắt buộc khi set `status: "done"` nếu task có `dod` |
+| `progress_percent` | int | 0–100, % tiến độ (nullable) |
+| `progress_note` | string | Ghi chú tiến độ/handoff (nullable) |
+| `next_action` | string | Bước tiếp theo để làm tiếp ngày mai (nullable) |
+| `blocked_reason` | string | Lý do bị block (nullable) |
+| `last_worked_at` | timestamp | Lần cuối task được “đụng” (auto update khi status=doing hoặc update progress fields) |
+| `progress_score` | float | 0–1, server-evaluated (non-blocking) từ progress_note/next_action/DoD/outcome |
 
 > **⚠️ DoD Gate:** Khi PATCH `status` → `done`, nếu task có field `dod`, server sẽ trả `DOD_NOT_CONFIRMED` (400) trừ khi gửi kèm `dod_confirmed: true`.
+>
+> **📝 Daily hand-off (khuyến nghị):** Khi set `status: "doing"`, nên gửi thêm ít nhất một trong `progress_note` hoặc `next_action` để hôm sau/agent khác tiếp tục mượt hơn. Server sẽ không hard-fail nếu thiếu (có thể trả warning header).
 
 #### POST /tasks/:id/complete
 
